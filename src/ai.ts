@@ -935,7 +935,11 @@ export async function callAISession(options: CallAISessionOptions): Promise<stri
       invalidateOpenCodeConnection();
     }
   }
-  const provider = getActiveProvider(settings);
+  // Agent 选了具体模型时一并记录了 providerId，按它解析；
+  // 没带就用当前活跃 provider（兼容旧数据）。
+  const provider = target?.providerId
+    ? settings.apiProviders.find((p) => p.id === target.providerId) || getActiveProvider(settings)
+    : getActiveProvider(settings);
   if (!provider || !provider.apiKey) throw new Error(t("chat.ai.error.apiKey"));
   // Agent 的 model 覆盖 API 通道默认模型（见 DESIGN.md Q3）
   const model = target?.model || provider.model;

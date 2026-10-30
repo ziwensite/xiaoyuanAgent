@@ -126,14 +126,18 @@ export function buildModelList(
     const active = getActiveProvider(settings);
     let hasItem = false;
     for (const p of settings.apiProviders) {
-      if (!p.model) continue;
-      hasItem = true;
-      const label = p.name ? `${p.name}: ${p.model}` : p.model;
-      addPopupItem(apiBody, label, p.id === active?.id, () => {
-        settings.activeApiProviderId = p.id;
-        options.persist();
-        options.onSelectApi?.(label);
-      });
+      // 一个提供商下可能有多个模型，每个模型一行；选中即切换 provider + 当前模型
+      const models = (p.models?.length ? p.models : p.model ? [p.model] : []).slice().sort((a, b) => a.localeCompare(b));
+      for (const model of models) {
+        hasItem = true;
+        const label = p.name ? `${p.name}: ${model}` : model;
+        addPopupItem(apiBody, label, p.id === active?.id && model === p.model, () => {
+          settings.activeApiProviderId = p.id;
+          p.model = model;
+          options.persist();
+          options.onSelectApi?.(label);
+        });
+      }
     }
     if (!hasItem) {
       apiBody.createDiv({ cls: "xyag-popup-item" }).createSpan({ cls: "xyag-popup-label" }).textContent = t(

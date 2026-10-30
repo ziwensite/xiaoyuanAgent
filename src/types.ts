@@ -17,6 +17,8 @@ export interface AgentConfig {
   enabled: boolean;
   /** 覆盖通道默认模型（留空 = 沿用通道默认） */
   model?: string;
+  /** API 通道下模型所属的提供商 id（选模型时一并记录，调用时按它取 baseUrl/apiKey） */
+  providerId?: string;
   /** 是否为前台默认回答者（全局唯一） */
   isDefault?: boolean;
   /** 内置 Agent：可改名/改提示词，不可删除 */
@@ -106,7 +108,10 @@ export interface ApiProviderConfig {
   id: string;
   name: string;
   baseUrl: string;
+  /** 当前选中的模型（应在 models 列表里） */
   model: string;
+  /** 该提供商下的模型列表，共用 baseUrl / apiKey */
+  models?: string[];
   apiKey: string;
 }
 

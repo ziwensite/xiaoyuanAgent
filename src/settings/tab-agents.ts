@@ -188,12 +188,10 @@ setIcon(iconSpan, agent.avatar);
       label: `${t("setting.agents.channel.cli")} · ${m.label}`,
     }));
     const apiOpts: { value: string; label: string }[] = [];
-    const seen = new Set<string>();
     for (const p of s.apiProviders || []) {
-      const model = p.model?.trim();
-      if (model && !seen.has(model)) {
-        seen.add(model);
-        apiOpts.push({ value: `api:${model}`, label: `${t("setting.agents.channel.api")} · ${p.name} · ${model}` });
+      const models = (p.models?.length ? p.models : p.model ? [p.model] : []).slice().sort((a, b) => a.localeCompare(b));
+      for (const model of models) {
+        apiOpts.push({ value: `api:${p.id}:${model}`, label: `${t("setting.agents.channel.api")} · ${p.name} · ${model}` });
       }
     }
     return [empty, ...cliOpts, ...apiOpts];
@@ -201,18 +199,39 @@ setIcon(iconSpan, agent.avatar);
   const modelWrap = modelField.createDiv();
   const renderModelSelect = () => {
     modelWrap.empty();
+    // 当前值要能精确匹配选项：api 通道的值里带 providerId
+    const current =
+      agent.channel === "api" && agent.model
+        ? `api:${agent.providerId || ""}:${agent.model}`
+        : agent.model
+          ? `${agent.channel}:${agent.model}`
+          : "";
     modelWrap.appendChild(
       createSelectField({
         options: allModelOptions(),
-        value: agent.model ? `${agent.channel}:${agent.model}` : "",
+        value: current,
         ariaLabel: t("setting.agents.model"),
         onSelect: async (val) => {
           if (!val) {
             agent.model = undefined;
+            agent.providerId = undefined;
+          } else if (val.startsWith("api:")) {
+            // api:{providerId}:{model}
+            const rest = val.slice(4);
+            const idx = rest.indexOf(":");
+            agent.providerId = rest.slice(0, idx);
+            agent.model = rest.slice(idx + 1);
+            if (agent.channel !== "api") {
+              agent.channel = "api";
+              channelSelect.setValue("api");
+              ensureDefaultAgent(s);
+              updateHeader();
+            }
           } else {
             const idx = val.indexOf(":");
             const ch = val.slice(0, idx) as AgentChannel;
             agent.model = val.slice(idx + 1);
+            agent.providerId = undefined;
             if (ch !== agent.channel) {
               agent.channel = ch;
               channelSelect.setValue(ch);

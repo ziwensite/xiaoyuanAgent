@@ -421,6 +421,9 @@ export default class XiaoyuanAgentPlugin extends Plugin {
     if (!this.settings.opencode.agent) this.settings.opencode.agent = "build";
     for (const p of this.settings.apiProviders) {
       if (p.apiKey) p.apiKey = decodeApiKey(p.apiKey);
+      // 迁移：早期 provider 只有一个 model 字段，没有 models 列表
+      if (!Array.isArray(p.models)) p.models = p.model ? [p.model] : [];
+      if (p.model && !p.models.includes(p.model)) p.models.unshift(p.model);
     }
 
     // 一次性迁移 v1 时代保存的设置：

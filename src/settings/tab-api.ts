@@ -1,11 +1,141 @@
 import type { SettingsCtx } from "./context";
-import { probeProvider } from "../connection-checker";
+import { fetchProviderModels, probeProvider } from "../connection-checker";
 import { t } from "../i18n";
 import { API_REASONING_OPTIONS, reasoningPresetLabel, toReasoningPreset } from "../reasoning";
 import { createSelectField } from "../select-list";
-import { Notice, Setting } from "obsidian";
+import { addPopupItem, showPopup } from "../popup";
+import { Notice, Setting, setIcon } from "obsidian";
+import type { ApiProviderConfig } from "../types";
 
 // ─── API 设置 ─────────────────────────────────────────────────────
+
+/**
+ * 提供商的模型列表编辑器。
+ *
+ * 一个提供商（baseUrl + apiKey）下挂多个模型，每行一个：
+ * 点行首圆圈设为当前模型，行尾 × 删除。底部「+ 添加模型」。
+ * 当前模型写在 provider.model，必须始终指向列表中的一项。
+ */
+function buildModelListEditor(
+  ctx: SettingsCtx,
+  content: HTMLElement,
+  provider: ApiProviderConfig,
+  updateHeader: () => void,
+): void {
+  const models = () => provider.models ?? (provider.models = []);
+  // 排序渲染，不改动存储顺序（用户手动排的意义不大，稳定字典序更好找）
+  const sortedModels = () => [...models()].sort((a, b) => a.localeCompare(b));
+
+  const field = content.createDiv({ cls: "xyag-api-provider-field xyag-api-models-field" });
+  field.createSpan({ cls: "xyag-api-provider-label", text: t("setting.api.provider.model") });
+  const listEl = field.createDiv({ cls: "xyag-api-models-list" });
+
+  const save = () => ctx.plugin.saveSettings();
+
+  const renderRows = () => {
+    listEl.empty();
+    for (const model of sortedModels()) {
+      const row = listEl.createDiv({ cls: `xyag-api-model-row${model === provider.model ? " is-current" : ""}` });
+      row.setAttribute("title", t("setting.api.provider.setCurrent"));
+      row.createSpan({ cls: "xyag-api-model-name", text: model });
+      // 点击整行设为当前模型
+      row.addEventListener("click", async () => {
+        if (provider.model === model) return;
+        provider.model = model;
+        await save();
+        renderRows();
+        updateHeader();
+        ctx.refreshChatView();
+      });
+      // 删除（至少保留一行）
+      const delBtn = row.createEl("button", { cls: "xyag-api-model-del", attr: { "aria-label": t("setting.api.provider.deleteModel") } });
+      setIcon(delBtn, "x");
+      delBtn.addEventListener("click", async (e) => {
+        e.stopPropagation(); // 别触发整行的「设为当前」
+        const arr = models();
+        if (arr.length <= 1) {
+          new Notice(t("setting.api.provider.leastOneModel"));
+          return;
+        }
+        provider.models = arr.filter((m) => m !== model);
+        // 删掉的正好是当前模型 → 当前模型回退到列表第一项
+        if (provider.model === model) provider.model = provider.models[0] || "";
+        await save();
+        renderRows();
+        updateHeader();
+        ctx.refreshChatView();
+      });
+    }
+    // 添加模型：名称重复或留空不加
+    const addRow = listEl.createDiv({ cls: "xyag-api-model-add" });
+    const addInput = addRow.createEl("input", {
+      cls: "xyag-api-provider-input",
+      attr: { placeholder: t("setting.api.provider.modelPlaceholder") },
+    });
+    const addBtn = addRow.createEl("button", { cls: "xyag-status-btn", text: t("setting.api.provider.addModel") });
+    const doAdd = async () => {
+      const name = addInput.value.trim();
+      if (!name) return;
+      const arr = models();
+      if (arr.includes(name)) {
+        new Notice(t("setting.api.provider.modelExists", name));
+        return;
+      }
+      arr.push(name);
+      // 列表里第一个模型自动成为当前模型
+      if (!provider.model) provider.model = name;
+      addInput.value = "";
+      await save();
+      renderRows();
+      updateHeader();
+      ctx.refreshChatView();
+    };
+    addBtn.addEventListener("click", () => void doAdd());
+    addInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void doAdd();
+      }
+    });
+    // 在线获取：拉 provider 的 /models 清单，弹出列表点选添加（可连选多个）
+    const fetchBtn = addRow.createEl("button", { cls: "xyag-status-btn", text: t("setting.api.provider.fetchModels") });
+    fetchBtn.addEventListener("click", async () => {
+      fetchBtn.disabled = true;
+      fetchBtn.textContent = t("status.checking");
+      const remote = await fetchProviderModels(provider);
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = t("setting.api.provider.fetchModels");
+      if (!remote) {
+        new Notice(t("setting.api.provider.fetchFailed"));
+        return;
+      }
+      // 过滤掉已添加的，剩下的才值得展示
+      const candidates = remote.filter((m) => !models().includes(m));
+      if (candidates.length === 0) {
+        new Notice(t("setting.api.provider.fetchEmpty"));
+        return;
+      }
+      showPopup(
+        fetchBtn,
+        (popup) => {
+          for (const m of candidates) {
+            addPopupItem(popup, m, false, () => {
+              models().push(m);
+              if (!provider.model) provider.model = m;
+              void save().then(() => {
+                renderRows();
+                updateHeader();
+                ctx.refreshChatView();
+              });
+            });
+          }
+        },
+        { direction: "auto", maxHeight: "50vh", matchWidth: false, minWidth: 220 },
+      );
+    });
+  };
+  renderRows();
+}
 
 export function buildAPITab(ctx: SettingsCtx, container: HTMLElement) {
   const s = ctx.s();
@@ -81,11 +211,6 @@ updateHeader();
       await ctx.plugin.saveSettings();
       ctx.detectApiConnection();
     });
-    ctx.addFieldText(content, t("setting.api.provider.model"), provider.model, "gpt-4o", async (val) => {
-      provider.model = val;
-      await ctx.plugin.saveSettings();
-updateHeader();
-    });
     ctx.addFieldText(
       content,
       "API Key",
@@ -98,6 +223,7 @@ updateHeader();
       },
       true,
     );
+    buildModelListEditor(ctx, content, provider, updateHeader);
   }
 
   const addBtn = container.createDiv({ cls: "xyag-settings-status-actions" });
@@ -108,6 +234,7 @@ updateHeader();
       name: t("api.provider.newName"),
       baseUrl: "",
       model: "",
+      models: [],
       apiKey: "",
     });
     await ctx.plugin.saveSettings();

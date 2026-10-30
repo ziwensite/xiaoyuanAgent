@@ -45,6 +45,40 @@ export async function probeProvider(provider: { baseUrl: string; apiKey: string 
   }
 }
 
+/**
+ * 拉取 provider 的模型列表（OpenAI 兼容的 `GET {baseUrl}/models`）。
+ *
+ * 用于设置页「在线获取模型」：不用手敲模型名，从服务端清单里选。
+ * 失败返回 null（连不上 / 鉴权失败 / 响应格式不对都归这里），由调用方提示。
+ */
+export async function fetchProviderModels(provider: { baseUrl: string; apiKey: string }): Promise<string[] | null> {
+  if (!provider.baseUrl || !provider.apiKey) return null;
+  if (!isSafeHttpUrl(provider.baseUrl)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const modelsUrl = provider.baseUrl.replace(/\/+$/, "") + "/models";
+    const resp = await fetch(modelsUrl, {
+      headers: { Authorization: `Bearer ${provider.apiKey}` },
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      resp.body?.cancel().catch(() => {});
+      return null;
+    }
+    const body = (await resp.json()) as { data?: { id?: unknown }[] };
+    if (!Array.isArray(body?.data)) return null;
+    // 只收字符串 id，去重并按字典序排一下，列表好找
+    const ids = body.data.map((m) => m?.id).filter((v): v is string => typeof v === "string" && !!v);
+    return [...new Set(ids)].sort();
+  } catch (err: unknown) {
+    console.warn("[xiaoyuanAgent] 拉取 provider 模型列表失败:", err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function getCLIConnections(settings: XiaoyuanAgentSettings): Promise<string[]> {
   const existing = await findOpenCodeConnection(settings.opencode.port, settings.opencode.hostname);
   if (!existing) return [];

@@ -112,7 +112,7 @@ export const DEFAULT_SETTINGS: XiaoyuanAgentSettings = {
 
   activeApiProviderId: "",
   apiProviders: [
-    { id: "default", name: "默认 API", baseUrl: "https://api.openai.com/v1", model: "gpt-4o", apiKey: "" },
+    { id: "default", name: "默认 API", baseUrl: "https://api.openai.com/v1", model: "gpt-4o", models: ["gpt-4o"], apiKey: "" },
   ],
 
   proxyEnabled: false,

@@ -1442,6 +1442,96 @@ pre:hover .xyag-copy-btn {
   font-weight: 600;
 }
 
+/* API 提供商的模型列表编辑器：标签与首行对齐 */
+.xyag-api-models-field {
+  align-items: start;
+}
+
+.xyag-api-models-field > .xyag-api-provider-label {
+  padding-top: 6px;
+}
+
+.xyag-api-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.xyag-api-model-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+
+.xyag-api-model-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.xyag-api-model-row.is-current {
+  border-left-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.xyag-api-model-row.is-current .xyag-api-model-name {
+  font-weight: 600;
+}
+
+.xyag-api-model-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.xyag-api-model-del svg {
+  width: 14px;
+  height: 14px;
+}
+
+.xyag-api-model-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.xyag-api-model-del {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.xyag-api-model-row:hover .xyag-api-model-del {
+  opacity: 1;
+}
+
+.xyag-api-model-del:hover {
+  color: var(--color-red);
+}
+
+.xyag-api-model-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.xyag-api-model-add .xyag-api-provider-input {
+  flex: 1;
+}
+
 /* Agent 提示词下方的「恢复默认」：落在两列 grid 的输入框列，靠右 */
 .xyag-agent-reset-row {
   grid-column: 2;
