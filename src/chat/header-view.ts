@@ -3,7 +3,7 @@ import type { ChatCtx } from "./context";
 import type { ChatSession } from "../types";
 import { API_STATUS_CACHE_MS, getActiveProvider } from "../constants";
 import { ensureOpenCodeServer, getVaultBasePath } from "../ai";
-import { buildToolbarContent as renderToolbar } from "../toolbar";
+import { buildToolbarContent as renderToolbar, buildContextControls } from "../toolbar";
 import { showPopup, addPopupItem, closePopup } from "../popup";
 import { createActionBtn } from "../action-buttons";
 import { openInEditor } from "../open-in-editor";
@@ -233,6 +233,11 @@ export function rebuildToolbar(ctx: ChatCtx, opts?: { skipSync?: boolean }): voi
   if (!ctx.toolbarEl) return;
   ctx.toolbarEl.empty();
   buildToolbarContent(ctx, ctx.toolbarEl);
+  // 上下文状态挂在输入框上方，也要跟着重建（作用域可能随会话切换变化）
+  if (ctx.contextBarEl) {
+    ctx.contextBarEl.empty();
+    buildContextControls(ctx, ctx.contextBarEl);
+  }
   ctx.updateAgentSelector();
   ctx.updateAgentBorderClass();
   if (opts?.skipSync) return;

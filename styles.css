@@ -1752,40 +1752,59 @@ pre:hover .xyag-copy-btn {
   color: var(--text-faint);
 }
 
-/* 上下文状态指示：显示占用百分比，点击给出明细与「压缩 / 重置」 */
+/* 输入框上方工具条右侧：上下文状态 / 重置，贴着右边对齐 */
+.xyag-wiki-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* 输入框下方工具栏右侧：发送按钮，整体靠右 */
+.xyag-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* 上下文状态文字按钮：尺寸 / 圆角 / hover 与上方工具条的图标按钮一致 */
 .xyag-context-chip {
   display: inline-flex;
   align-items: center;
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border-radius: 10px;
-  border: 1px solid var(--background-modifier-border);
-  background-color: var(--background-modifier-hover);
-  font-size: 11px;
-  line-height: 1.6;
+  justify-content: center;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 0.8em;
   color: var(--text-muted);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  flex: 0 0 auto;
+  transition: background 0.15s, color 0.15s;
 }
 
 .xyag-context-chip:hover {
   color: var(--text-normal);
-  border-color: var(--interactive-accent);
+  background-color: var(--background-modifier-hover);
 }
 
 .xyag-context-chip.is-open {
   color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
 }
 
 .xyag-context-chip.is-high {
   color: var(--text-warning);
-  border-color: var(--text-warning);
 }
 
 .xyag-context-chip.is-over {
   color: var(--text-error);
-  border-color: var(--text-error);
 }
 
 .xyag-context-info {

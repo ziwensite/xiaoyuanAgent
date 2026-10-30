@@ -1,8 +1,9 @@
-﻿import { Notice, setTooltip } from "obsidian";
+﻿import { Notice, setIcon, setTooltip } from "obsidian";
 import { t } from "./i18n";
 import { showPopup, addPopupItem, addPopupSection } from "./popup";
 import { attachModelPicker, shortModelName } from "./model-picker";
 import { getActiveProvider } from "./constants";
+import { ConfirmModal } from "./settings/widgets";
 import {
   scopeOf,
   readContextStatus,
@@ -48,6 +49,92 @@ function describeContext(st: ContextStatus | null): string {
   return parts.join(" · ");
 }
 
+/**
+ * 上下文状态 + 重置按钮。
+ *
+ * 挂在输入框上方的工具条（`.xyag-wiki-bar` 右侧），不占用下方发送栏。
+ * 只有 CLI 通道才有长会话上下文，API 通道直接不渲染。
+ */
+export function buildContextControls(view: ToolbarHost, host: HTMLElement): void {
+  if (view.plugin.settings.execMode !== "cli") return;
+  const scope = scopeOf(view);
+  const chip = host.createSpan({ cls: "xyag-context-chip" });
+  chip.setText("…");
+
+  const render = (st: ContextStatus | null) => {
+    chip.removeClass("is-high", "is-over");
+    if (!st) {
+      chip.setText(t("chat.context.new"));
+      setTooltip(chip, t("chat.context.tip.new"));
+      return;
+    }
+    // 用量来自最近一次请求的 prompt token 数，上限来自该模型的上下文窗口
+    const pct = st.limit && st.tokens !== null ? Math.min(100, Math.round((st.tokens / st.limit) * 100)) : null;
+    if (pct !== null) chip.setText(`${pct}%`);
+    else if (st.compacted) chip.setText(t("chat.context.compacted"));
+    else chip.setText(t("chat.context.count", String(st.messageCount)));
+    setTooltip(chip, describeContext(st));
+    if (pct !== null && pct >= 90) chip.addClass("is-over");
+    else if (pct !== null && pct >= 70) chip.addClass("is-high");
+  };
+
+  const refresh = async (): Promise<void> => {
+    try {
+      render(await readContextStatus(view.plugin, scope));
+    } catch {
+      render(null);
+    }
+  };
+
+  chip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const popup = showPopup(
+      chip,
+      async (body) => {
+        const st = await readContextStatus(view.plugin, scope).catch(() => null);
+        render(st);
+        const info = body.createDiv({ cls: "xyag-context-info" });
+        info.setText(describeContext(st));
+        addPopupSection(body, t("chat.context.title"));
+        addPopupItem(body, t("chat.context.compress"), false, () => {
+          void (async () => {
+            const ok = await compactContext(view.plugin, scope).catch(() => false);
+            if (!ok) {
+              new Notice(t("notice.contextUnavailable"));
+              return;
+            }
+            new Notice(t("notice.contextCompressed"));
+            // 压缩是异步任务：空闲会话几秒内完成，分两次刷新就够
+            window.setTimeout(() => void refresh(), 3000);
+            window.setTimeout(() => void refresh(), 9000);
+          })();
+        });
+      },
+      {
+        direction: "auto",
+        minWidth: 220,
+        onClose: () => chip.classList.remove("is-open"),
+      },
+    );
+    if (popup) chip.addClass("is-open");
+  });
+
+  // 重置上下文：独立按钮，和状态并排，复用上方工具条的图标按钮样式
+  const resetBtn = host.createSpan({ cls: "xyag-wiki-btn" });
+  setIcon(resetBtn, "rotate-ccw");
+  setTooltip(resetBtn, t("chat.context.reset"));
+  resetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    new ConfirmModal(view.plugin.app, t("chat.context.resetConfirm"), async () => {
+      await resetContext(view.plugin, scope);
+      render(null);
+      new Notice(t("notice.contextReset"));
+    });
+  });
+
+  void refresh();
+}
+
 export function buildToolbarContent(container: HTMLElement, view: ToolbarHost): HTMLSpanElement {
   const s = view.plugin.settings;
 
@@ -56,82 +143,6 @@ export function buildToolbarContent(container: HTMLElement, view: ToolbarHost): 
   setTooltip(attachBtn, t("chat.tooltip.attach"));
   attachBtn.addEventListener("click", () => view.pickFiles());
 
-  // 上下文状态：只有 CLI（OpenCode 服务端长会话）才有这个概念。
-  // 点一下给出明细，并提供「压缩 / 重置」两个动作。
-  if (s.execMode === "cli") {
-    const scope = scopeOf(view);
-    const chip = container.createSpan({ cls: "xyag-context-chip" });
-    chip.setText("…");
-
-    const render = (st: ContextStatus | null) => {
-      chip.removeClass("is-high", "is-over");
-      if (!st) {
-        chip.setText(t("chat.context.new"));
-        setTooltip(chip, t("chat.context.tip.new"));
-        return;
-      }
-      // 用量来自最近一次请求的 prompt token 数，上限来自该模型的上下文窗口
-      const pct = st.limit && st.tokens !== null ? Math.min(100, Math.round((st.tokens / st.limit) * 100)) : null;
-      if (pct !== null) chip.setText(`${pct}%`);
-      else if (st.compacted) chip.setText(t("chat.context.compacted"));
-      else chip.setText(t("chat.context.count", String(st.messageCount)));
-      setTooltip(chip, describeContext(st));
-      if (pct !== null && pct >= 90) chip.addClass("is-over");
-      else if (pct !== null && pct >= 70) chip.addClass("is-high");
-    };
-
-    const refresh = async (): Promise<void> => {
-      try {
-        render(await readContextStatus(view.plugin, scope));
-      } catch {
-        render(null);
-      }
-    };
-
-    chip.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const popup = showPopup(
-        chip,
-        async (body) => {
-          const st = await readContextStatus(view.plugin, scope).catch(() => null);
-          render(st);
-          const info = body.createDiv({ cls: "xyag-context-info" });
-          info.setText(describeContext(st));
-          addPopupSection(body, t("chat.context.title"));
-          addPopupItem(body, t("chat.context.compress"), false, () => {
-            void (async () => {
-              const ok = await compactContext(view.plugin, scope).catch(() => false);
-              if (!ok) {
-                new Notice(t("notice.contextUnavailable"));
-                return;
-              }
-              new Notice(t("notice.contextCompressed"));
-              // 压缩是异步任务：空闲会话几秒内完成，分两次刷新就够
-              window.setTimeout(() => void refresh(), 3000);
-              window.setTimeout(() => void refresh(), 9000);
-            })();
-          });
-          addPopupItem(body, t("chat.context.reset"), false, () => {
-            void (async () => {
-              await resetContext(view.plugin, scope);
-              render(null);
-              new Notice(t("notice.contextReset"));
-            })();
-          });
-        },
-        {
-          direction: "auto",
-          minWidth: 220,
-          onClose: () => chip.classList.remove("is-open"),
-        },
-      );
-      if (popup) chip.addClass("is-open");
-    });
-
-    void refresh();
-  }
-
-  // OpenCode 内置 agent（非本插件的 Agent）。
   const getAgentOptions = () => {
     const cur = view.plugin.settings;
     const list = cur.opencodeAgents || [];
@@ -277,9 +288,11 @@ export function buildToolbarContent(container: HTMLElement, view: ToolbarHost): 
     if (levelPopup) levelText.classList.add("is-open");
   });
 
+  // 发送按钮靠右；上下文状态 / 重置挂在输入框上方的工具条里
+  const rightGroup = container.createSpan({ cls: "xyag-toolbar-right" });
+
   // Send/Stop button
-  const sendBtn = container.createSpan({ cls: "xyag-send-btn" });
-  sendBtn.style.marginLeft = "auto";
+  const sendBtn = rightGroup.createSpan({ cls: "xyag-send-btn" });
   sendBtn.addEventListener("click", () => {
     if (view.abortController) view.abortController.abort();
     else view.sendMessage();

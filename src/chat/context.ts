@@ -65,6 +65,8 @@ export interface ChatCtx extends ToolbarHost {
   inputEl: HTMLTextAreaElement;
   sendBtn: HTMLSpanElement;
   toolbarEl: HTMLDivElement;
+  /** 输入框上方工具条右侧的上下文状态容器（CLI 通道才有内容） */
+  contextBarEl?: HTMLDivElement;
   agentSelector: HTMLSpanElement;
   connectionStatusEl: HTMLSpanElement | null;
   openCodeEl: HTMLSpanElement;

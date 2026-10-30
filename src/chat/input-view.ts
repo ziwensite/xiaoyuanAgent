@@ -6,6 +6,7 @@ import { TopicTitleModal } from "../modals";
 import { listAgents } from "../agent-registry";
 import { t } from "../i18n";
 import { buildToolbarContent, updateAgentBorderClass } from "./header-view";
+import { buildContextControls } from "../toolbar";
 import { renderQuoteBarFor } from "./renderer";
 
 // ─── 输入区 ─────────────────────────────────────────────────────
@@ -15,6 +16,9 @@ export function buildInputArea(ctx: ChatCtx, root: HTMLDivElement): void {
 
   const wikiBar = container.createDiv({ cls: "xyag-wiki-bar" });
   buildWikiToolbar(ctx, wikiBar);
+  // 上下文状态 / 重置：放在输入框上方的工具条最右侧
+  ctx.contextBarEl = wikiBar.createDiv({ cls: "xyag-wiki-bar-right" });
+  buildContextControls(ctx, ctx.contextBarEl);
 
   ctx.inputEl = container.createEl("textarea", {
     cls: "xyag-chat-input",
