@@ -4,6 +4,7 @@ import type { ChatMessage, FileDiff, TopicSection } from "../types";
 import { CONTEXT_TRIM_RATIO } from "../constants";
 import { estimateTokens, diffLineRows, formatDate } from "../utils";
 import { buildActionBar } from "../action-bar";
+import { createActionBtn } from "../action-buttons";
 import { renderQuoteBar } from "../quote-bar";
 import { TopicTitleModal } from "../modals";
 import { getAgentByName } from "../agent-registry";
@@ -67,20 +68,21 @@ export async function highlightCodeUnder(container: HTMLElement): Promise<void> 
 
 export function enhanceCodeBlocks(ctx: ChatCtx, container: HTMLElement): void {
   container.querySelectorAll("pre").forEach((pre) => {
+    // MarkdownRenderer 在阅读模式下会给代码块塞一个原生复制按钮，
+    // 和插件自己的并排出现就是「两个复制按钮」。移除原生的，保留样式统一的插件按钮。
+    pre.querySelectorAll(".copy-code-button").forEach((b) => b.remove());
     if (pre.querySelector(".xyag-copy-btn")) return;
-    const btn = document.createElement("button");
-    btn.className = "xyag-copy-btn";
-    btn.textContent = t("btn.copy");
+    // 复用消息操作条的复制按钮：图标 + tooltip，风格与聊天窗口其它按钮一致
+    const btn = createActionBtn("copy");
+    btn.classList.add("xyag-copy-btn");
     pre.style.position = "relative";
     btn.addEventListener("click", () => {
       // 复制的是 pre 的文本，但按钮本身也在 pre 里 —— 不摘掉按钮会把「复制」一起复制出去。
       const clone = pre.cloneNode(true) as HTMLElement;
       clone.querySelectorAll(".xyag-copy-btn").forEach((b) => b.remove());
       navigator.clipboard.writeText(clone.textContent || "");
-      btn.textContent = t("chat.copied");
-      setTimeout(() => {
-        btn.textContent = t("btn.copy");
-      }, 2000);
+      setIcon(btn, "check");
+      setTimeout(() => setIcon(btn, "copy"), 2000);
     });
     pre.appendChild(btn);
   });
@@ -106,6 +108,78 @@ export function renderMsgHeader(ctx: ChatCtx, msgEl: HTMLElement, source: string
   const avatarEl = headerEl.createSpan({ cls: "xyag-msg-avatar" });
   setIcon(avatarEl, agent?.avatar || "sparkles");
   headerEl.createSpan({ cls: "xyag-msg-name", text: source });
+}
+
+// ─── 文件路径双链 ─────────────────────────────────────────────────
+
+/**
+ * 匹配文本里像库内文件路径的片段：至少含一个斜杠、以常见笔记/附件扩展名结尾。
+ * 误匹配无害——后面会用 vault 实际存在性过滤，不存在的片段保持纯文本。
+ */
+const FILE_PATH_RE = /[\w\-.一-鿿]+(?:[/\\][\w\-. 一-鿿]+)+\.(?:md|canvas|base|excalidraw|png|jpe?g|gif|webp|pdf)/giu;
+const FILE_PATH_TEST_RE = new RegExp(FILE_PATH_RE.source, "iu");
+
+function openVaultPath(ctx: ChatCtx, path: string): void {
+  const clean = path.replace(/\\/g, "/").replace(/^\/+/, "");
+  void ctx.app.workspace.openLinkText(clean, `${ctx.plugin.settings.chatHistoryPath}/session.md`);
+}
+
+/**
+ * 把渲染后正文里的库内文件路径变成可点击链接（双链效果：点击直达笔记）。
+ *
+ * 模型输出是纯文本（OpenCode 不知道 Obsidian 链接语法），在渲染后做一层
+ * 「路径片段 → 库内存在性校验 → 包 <a>」的转换，不依赖模型自己写 [[wikilink]]。
+ */
+export function linkifyFilePaths(ctx: ChatCtx, container: HTMLElement): void {
+  const exists = (p: string) => !!ctx.app.vault.getAbstractFileByPath(p.replace(/\\/g, "/").replace(/^\/+/, ""));
+  const makeLink = (path: string): HTMLAnchorElement => {
+    const a = document.createElement("a");
+    a.className = "xyag-file-link internal-link";
+    a.textContent = path;
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openVaultPath(ctx, path);
+    });
+    return a;
+  };
+
+  // 行内 code 整段就是路径的情况（模型最常见的写法：`folder/note.md`）
+  container.querySelectorAll("code").forEach((code) => {
+    if (code.closest("pre") || code.closest("a")) return;
+    const text = (code.textContent || "").trim();
+    if (text && FILE_PATH_TEST_RE.test(text) && exists(text)) code.replaceWith(makeLink(text));
+  });
+
+  // 普通文本节点里的路径片段
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      const parent = node.parentElement;
+      if (!parent || parent.closest("a, pre, code, script, style")) return NodeFilter.FILTER_REJECT;
+      return FILE_PATH_TEST_RE.test(node.nodeValue || "") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    },
+  });
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  for (const node of nodes) {
+    const text = node.nodeValue || "";
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let changed = false;
+    FILE_PATH_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = FILE_PATH_RE.exec(text))) {
+      const path = m[0];
+      if (!exists(path)) continue;
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      frag.appendChild(makeLink(path));
+      last = m.index + path.length;
+      changed = true;
+    }
+    if (!changed) continue;
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    node.replaceWith(frag);
+  }
 }
 
 export async function renderMessageEl(
@@ -140,6 +214,7 @@ export async function renderMessageEl(
     }
     await renderObsidianMD(ctx, bubbleEl.createDiv({ cls: "xyag-obsidian-md" }), content.trim());
     enhanceCodeBlocks(ctx, bubbleEl);
+    linkifyFilePaths(ctx, bubbleEl);
   }
 
   if (!streaming) {
@@ -342,6 +417,7 @@ export async function finalizeStreamingMessage(ctx: ChatCtx, messageId?: string)
   }
 
   enhanceCodeBlocks(ctx, bubbleEl);
+  linkifyFilePaths(ctx, bubbleEl);
   ctx.messagesEl.scrollTop = ctx.messagesEl.scrollHeight;
   return lastMsg.id;
 }
@@ -360,7 +436,15 @@ export function renderDiffs(ctx: ChatCtx, messageId: string, diffs: FileDiff[]):
 
   for (const diff of diffs) {
     const fileEl = toggle.createDiv({ cls: "xyag-diff-file" });
-    fileEl.createDiv({ cls: "xyag-diff-file-header" }).textContent = `${diff.file} (+${diff.additions}/-${diff.deletions})`;
+    const headerEl = fileEl.createDiv({ cls: "xyag-diff-file-header" });
+    // 文件路径做成双链：点击直达笔记（diff.file 是相对库根目录的路径）
+    const linkEl = headerEl.createEl("a", { cls: "xyag-file-link internal-link", text: diff.file });
+    linkEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openVaultPath(ctx, diff.file);
+    });
+    headerEl.createSpan({ text: ` (+${diff.additions}/-${diff.deletions})` });
     const contentEl = fileEl.createDiv({ cls: "xyag-diff-content" });
     const table = contentEl.createEl("table", { cls: "xyag-diff-table" });
     for (const r of diffLineRows(diff.before, diff.after)) {

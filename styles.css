@@ -660,22 +660,15 @@
   font-size: 0.9em;
 }
 
-/* 代码块复制按钮 */
+/* 代码块复制按钮：图标风格继承 .xyag-msg-action，这里只管定位与悬停显现 */
 .xyag-copy-btn {
   position: absolute;
   top: 4px;
   right: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
-  border-radius: 4px;
-  border: 1px solid var(--background-modifier-border);
   background: var(--background-primary);
-  color: var(--text-muted);
-  cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s;
   z-index: 1;
-  line-height: 1.4;
 }
 
 pre:hover .xyag-copy-btn {
