@@ -398,6 +398,10 @@ export function connectSSE(
     if (reconnectTimer) clearTimeout(reconnectTimer);
   };
   signal.addEventListener("abort", stop, { once: true });
+  // 主动中止（用户点「停止」）不会再走重连，必须在这里通知上层收尾。
+  // 各条通道在 abort 时只会 close，不会回调 onDone，否则 idlePromise 永远等不到
+  // 结算，表现就是「点了停止没反应，一直转到超时」。
+  signal.addEventListener("abort", () => onDone?.(), { once: true });
 
   const run = () => {
     reconnectTimer = undefined;

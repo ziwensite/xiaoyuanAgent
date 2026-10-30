@@ -117,6 +117,9 @@ interface V2AssistantMessage {
   type?: string;
   agent?: string;
   content?: V2ContentPart[];
+  time?: { created?: number; streamed?: number; completed?: number };
+  finish?: string;
+  error?: { type?: string; message?: string };
 }
 
 /** OpenCode v2 `FileDiff.Info` */
@@ -314,6 +317,23 @@ function extractAssistantText(messages: V2AssistantMessage[] | undefined): strin
 }
 
 /**
+ * 只保留本轮的消息。
+ *
+ * `/message` 是**最新在前**的顺序（实测 `idle/assistant/user/synthetic` 依次递减），
+ * 而且续用的长会话会返回整段历史：直接全量拼起来会把上一轮的回复混进本轮，
+ * 按数组下标切也会切错。这里用时间戳切：以最近一条 `user` 为界，
+ * 取比它新的 assistant，再按 created 升序排回正常顺序（多 step 才不会倒序）。
+ */
+function currentRoundMessages(messages: V2AssistantMessage[] | undefined): V2AssistantMessage[] {
+  if (!Array.isArray(messages)) return [];
+  const lastUser = messages.find((m) => m?.type === "user");
+  const since = lastUser?.time?.created ?? 0;
+  return messages
+    .filter((m) => m?.type === "assistant" && (m.time?.created ?? 0) >= since)
+    .sort((a, b) => (a.time?.created ?? 0) - (b.time?.created ?? 0));
+}
+
+/**
  * 从消息里的工具调用结果里提取文件差异。
  *
  * v2 的 `GET /api/session/{id}/diff` 依赖 git 快照，只有在库被 git 管理时才有数据；
@@ -503,7 +523,7 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
         undefined,
         conn.authHeader,
       );
-      const text = extractAssistantText(messages);
+      const text = extractAssistantText(currentRoundMessages(messages));
       if (text && text !== currentText) {
         currentText = text;
         onTextUpdate?.(text, currentThinking);
@@ -515,7 +535,9 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
         undefined,
         conn.authHeader,
       );
-      if (info?.time?.idle) {
+      const idleAt = (info as { time?: { idle?: number } } | null)?.time?.idle;
+      // 旧的一轮 idle 会一直留在会话上，只有「本轮开始之后」的才算收尾
+      if (idleAt && idleAt >= promptSentAt) {
         sseAbort.abort();
         settle();
         return;
@@ -561,6 +583,29 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
         { decision },
         conn.authHeader,
       ).catch(() => {});
+    }
+  };
+
+  // 看门狗：事件流可能「不报错也不结束」（Electron net 静默挂住时就是这样），
+  // 期间既没有 session.idle 也没有 EOF，这一轮就会一直等下去。
+  // 直接问服务端「本轮是否已收尾」最可靠：`time.idle` 会被新的一轮复用成旧值，
+  // 所以只认「发 prompt 之后写入的 idle」。
+  let idleWatch: ReturnType<typeof setInterval> | undefined;
+  let promptSentAt = 0;
+  const checkServerIdle = async (): Promise<void> => {
+    if (settled) return;
+    const info = await requestOpenCode<{ time?: { idle?: number } }>(
+      conn.url,
+      `/session/${sessionId}`,
+      "GET",
+      undefined,
+      conn.authHeader,
+    ).catch(() => null);
+    if (settled) return;
+    const idleAt = info?.time?.idle;
+    if (idleAt && idleAt >= promptSentAt) {
+      sseAbort.abort();
+      settle();
     }
   };
 
@@ -692,10 +737,12 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
     // v2: prompt 正文是纯文本，agent/model 已在建会话时指定
     // 续用会话时只发这一轮的新增内容，历史由服务端保存，不再重发全文
     const promptText = reused && options.incrementalPrompt ? options.incrementalPrompt : prompt;
+    promptSentAt = Date.now();
     await requestOpenCode(conn.url, `/session/${sessionId}/prompt`, "POST", { text: promptText }, conn.authHeader);
     // prompt 发出去之后才开始盯权限：上一轮残留的请求不该再弹给用户
     void handlePermissions();
     permissionTimer = setInterval(() => void handlePermissions(), 1000);
+    idleWatch = setInterval(() => void checkServerIdle(), 3000);
     if (!reused && options.onSessionBound) {
       // prompt 已经进了服务端，之后才可以把它当长会话续用。
       // 没有绑定回调的调用（设置页测试、后台委托）仍然按一次性会话处理。
@@ -737,24 +784,34 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
       throw err;
     }
 
-    const result = extractAssistantText(messages);
+    // 只取本轮消息：续用会话时历史回复不能混进这一轮的结果
+    const roundMessages = currentRoundMessages(messages);
+    const result = extractAssistantText(roundMessages);
     const snapshots = await Promise.all([...writeSnapshots.values()]).catch(() => [] as WriteSnapshot[]);
     if (result) {
       onTextUpdate?.(result, currentThinking);
-      await pushSessionDiffs(conn.url, sessionId, conn.authHeader, messages, snapshots, onDiffs);
+      await pushSessionDiffs(conn.url, sessionId, conn.authHeader, roundMessages, snapshots, onDiffs, !reused);
       return result;
     }
 
     // 没有拿到文本：如果 SSE 正常结束说明确实没有回复，否则抛出连接错误
     if (sseError) throw sseError;
     if (currentText) {
-      await pushSessionDiffs(conn.url, sessionId, conn.authHeader, messages, snapshots, onDiffs);
+      await pushSessionDiffs(conn.url, sessionId, conn.authHeader, roundMessages, snapshots, onDiffs, !reused);
       return currentText;
+    }
+    // 服务端明确标了这一轮失败（模型中止、请求报错）时给出真实原因，
+    // 否则只会看到笼统的「未找到 assistant 回复」
+    const lastAssistant = roundMessages[roundMessages.length - 1];
+    if (lastAssistant?.error?.message) {
+      if (lastAssistant.error.type === "aborted") throw new DOMException(t("error.aborted"), "AbortError");
+      throw new Error(lastAssistant.error.message);
     }
     throw new Error(t("error.noAssistantReply"));
   } finally {
     signal?.removeEventListener("abort", interruptOnAbort);
     if (permissionTimer) clearInterval(permissionTimer);
+    if (idleWatch) clearInterval(idleWatch);
     sseAbort.abort();
     // 绑定的长会话要留给下一轮；只有一次性调用（设置页测试、后台委托）才删
     if (!bound && !reused) {
@@ -779,13 +836,17 @@ async function pushSessionDiffs(
   messages: V2AssistantMessage[] | undefined,
   writeSnapshots: WriteSnapshot[],
   onDiffs?: (diffs: FileDiff[]) => void,
+  /** 续用会话时 `/diff` 会把历史轮次的改动一起返回，只能靠本轮工具结果 */
+  wholeSessionDiff = true,
 ): Promise<void> {
   if (!onDiffs) return;
   let diffs: FileDiff[] = [];
-  try {
-    const raw = await requestOpenCode<V2FileDiff[]>(url, `/session/${sessionId}/diff`, "GET", undefined, authHeader);
-    if (Array.isArray(raw)) diffs = raw.map(toPluginDiff).filter((d) => d.file);
-  } catch {}
+  if (wholeSessionDiff) {
+    try {
+      const raw = await requestOpenCode<V2FileDiff[]>(url, `/session/${sessionId}/diff`, "GET", undefined, authHeader);
+      if (Array.isArray(raw)) diffs = raw.map(toPluginDiff).filter((d) => d.file);
+    } catch {}
+  }
   if (!diffs.length) {
     const snapMap = new Map<string, WriteSnapshot>();
     for (const s of writeSnapshots) snapMap.set(s.file, s);
