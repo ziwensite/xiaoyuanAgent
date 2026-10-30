@@ -1,0 +1,34 @@
+{
+  "name": "xiaoyuanAgent",
+  "version": "1.0.0",
+  "description": "小元 Agent - Obsidian 多 Agent AI 助手（聊天、文本润色、维基管理）",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "npm run lint && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "ai",
+    "agent",
+    "chat"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.21.0",
+    "eslint": "^10.4.1",
+    "obsidian": "^1.5.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.3.0"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}

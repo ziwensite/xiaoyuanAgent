@@ -1,0 +1,12 @@
+{
+  "id": "xiaoyuanAgent",
+  "name": "XiaoyuanAgent",
+  "version": "1.0.5",
+  "minAppVersion": "1.5.0",
+  "description": "多 Agent AI 助手：聊天、文本润色、维基管理 — 将 AI 能力集成到 Obsidian | Multi-agent AI assistant: chat, text polish, wiki management",
+  "author": "XiaoYuan",
+  "authorUrl": "",
+  "fundingUrl": "",
+  "isDesktopOnly": true,
+  "main": "main.js"
+}

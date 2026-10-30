@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.opencode/
+.opencode
+data.json
+main.js
+*.log
+xyag-build.json
+xyag-popup-debug.json
+
+# Obsidian sync conflict files
+*.sync-conflict-*.json
+
+# Agent working files
+.codebuddy/
+.hotreload
+
+# Temp test scripts
+t.js

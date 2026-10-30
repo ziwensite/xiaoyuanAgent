@@ -1,0 +1,1753 @@
+/* ═══════════════════════════════════════════════════════
+   XiaoyuanAgent (小元 Agent) — 全部样式
+   命名约定：所有类名以 `xyag-` 前缀，与源项目 xiaoyuanAI 完全隔离。
+   ═══════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════
+   Chat Layout
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.xyag-chat {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  overflow: hidden;
+}
+
+.xyag-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.xyag-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Chat Header
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0px 0px 8px 0px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.xyag-chat-header-left,
+.xyag-chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.xyag-chat-header-right {
+  flex-shrink: 0;
+}
+
+.xyag-icon-btn {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.xyag-icon-btn:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-icon-btn.is-connected {
+  color: var(--color-green);
+}
+
+.xyag-icon-btn.is-disconnected {
+  color: var(--text-faint);
+}
+
+.xyag-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 前台 Agent 选择器 */
+.xyag-agent-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 0.8em;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.xyag-agent-selector::after {
+  content: "▼";
+  font-size: 0.6em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.xyag-agent-selector:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-agent-selector-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.xyag-agent-selector-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.xyag-agent-selector-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════
+   AI Thinking Bar
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-thinking-bar {
+  position: relative;
+  height: 1px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  overflow: hidden;
+}
+
+.xyag-thinking-bar.is-active {
+  opacity: 1;
+}
+
+.xyag-thinking-bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0;
+  background: var(--interactive-accent);
+  animation: xyag-thinking-slide 2s ease-in-out infinite;
+}
+
+@keyframes xyag-thinking-slide {
+  0%   { width: 0; opacity: 1; }
+  50%  { width: 100%; opacity: 1; }
+  53%  { opacity: 0; }
+  55%  { width: 100%; opacity: 0; }
+  80%  { width: 0; }
+  100% { width: 0; opacity: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   会话下拉菜单（按 Agent 分组；原来是左侧抽屉）
+   ═══════════════════════════════════════════════════════ */
+
+/* 菜单本体：比普通弹层宽一些；高度交给列表自己收，别把面板撑爆 */
+.xyag-popup.xyag-session-menu {
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  padding: 4px 0 6px;
+}
+
+.xyag-session-title {
+  font-size: 0.78em;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 2px 10px 4px;
+  user-select: none;
+}
+
+.xyag-session-search {
+  width: calc(100% - 20px);
+  margin: 0 10px 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.xyag-session-search:focus {
+  border-color: var(--interactive-accent);
+}
+
+.xyag-session-list {
+  max-height: min(50vh, 380px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.xyag-session-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.xyag-session-group-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-weight: 600;
+  user-select: none;
+}
+
+.xyag-session-group-head:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-session-group-arrow {
+  font-size: 0.6em;
+  min-width: 9px;
+  color: var(--text-faint);
+}
+
+.xyag-session-group-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.xyag-session-group-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.xyag-session-group-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xyag-session-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 9px;
+}
+
+.xyag-session-group-body.is-collapsed {
+  display: none;
+}
+
+.xyag-session-new {
+  font-size: 0.78em;
+  color: var(--text-muted);
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px dashed var(--background-modifier-border);
+}
+
+.xyag-session-new:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-session-empty {
+  font-size: 0.75em;
+  color: var(--text-faint);
+  padding: 3px 6px;
+}
+
+.xyag-session-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-normal);
+  font-size: 0.8em;
+}
+
+.xyag-session-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-session-item.is-active {
+  background-color: var(--background-modifier-hover);
+  font-weight: 600;
+}
+
+.xyag-session-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xyag-session-item .xyag-popup-suffix {
+  opacity: 0;
+}
+
+.xyag-session-item:hover .xyag-popup-suffix {
+  opacity: 1;
+}
+
+.xyag-session-rename {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.95em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--interactive-accent);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  outline: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Message Bubbles
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 95%;
+  position: relative;
+}
+
+.xyag-msg-user {
+  align-self: flex-end;
+}
+
+.xyag-msg-assistant {
+  align-self: flex-start;
+}
+
+.xyag-msg-system {
+  align-self: center;
+  max-width: 100%;
+}
+
+.xyag-msg-system .xyag-msg-bubble {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8em;
+  padding: 4px 12px;
+  text-align: center;
+  border: none;
+}
+
+.xyag-date-header .xyag-msg-bubble {
+  font-weight: 500;
+  padding: 6px 12px 2px;
+}
+
+.xyag-msg-bubble {
+  padding: 10px 14px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  user-select: text;
+}
+
+.xyag-msg-user .xyag-msg-bubble {
+  background-color: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-primary));
+  color: var(--text-normal);
+  font-weight: 500;
+  border-radius: 14px;
+  border-bottom-right-radius: 3px;
+}
+
+.xyag-msg-assistant .xyag-msg-bubble {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  border-radius: 14px;
+  border-bottom-left-radius: 3px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.xyag-welcome {
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+.xyag-welcome .xyag-msg-bubble {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Assistant Message Header (Avatar + Name)
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-msg-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  padding: 0 2px;
+}
+
+.xyag-msg-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
+.xyag-msg-avatar svg {
+  width: 14px;
+  height: 14px;
+}
+
+.xyag-msg-name {
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Message Actions (hover to show)
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.xyag-msg:hover .xyag-msg-actions,
+.xyag-msg:focus-within .xyag-msg-actions {
+  opacity: 1;
+}
+
+.xyag-msg-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.xyag-msg-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.xyag-msg-action:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.xyag-msg-action.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.xyag-msg-time {
+  margin-left: auto;
+  padding-left: 14px;
+  font-size: 0.75em;
+  color: var(--text-muted);
+  user-select: none;
+  white-space: nowrap;
+}
+
+@keyframes xyag-voice-wave {
+  0%, 100% { transform: scaleY(1) scaleX(1); opacity: 0.7; }
+  25%      { transform: scaleY(1.2) scaleX(0.9); opacity: 1; }
+  50%      { transform: scaleY(0.8) scaleX(1.1); opacity: 0.9; }
+  75%      { transform: scaleY(1.4) scaleX(0.85); opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Message Content — Thinking / Diff / Streaming / Code
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-thinking {
+  margin-bottom: 6px;
+}
+
+.xyag-thinking summary {
+  cursor: pointer;
+  font-size: 0.8em;
+  color: var(--text-muted);
+  font-weight: 500;
+  user-select: none;
+  margin-bottom: 2px;
+}
+
+.xyag-thinking-content {
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--text-muted);
+  padding-left: 1em;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+/* 话题分段（仅展示用，可折叠） */
+.xyag-topic {
+  margin: 8px 0 2px;
+}
+
+.xyag-topic-details {
+  border-top: 1px dashed var(--background-modifier-border);
+  padding-top: 6px;
+}
+
+.xyag-topic-details summary {
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.xyag-topic-body {
+  margin-top: 4px;
+}
+
+.xyag-stream-content {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.xyag-diffs {
+  margin-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 6px;
+  font-size: 12px;
+}
+
+.xyag-diffs-summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.xyag-diffs-summary:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-diff-file {
+  margin: 4px 0;
+  padding: 4px;
+  border-radius: 4px;
+  background-color: var(--background-primary-alt);
+}
+
+.xyag-diff-file-header {
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 4px;
+  color: var(--text-normal);
+}
+
+.xyag-diff-content {
+  overflow-x: auto;
+  margin-top: 2px;
+}
+
+.xyag-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.xyag-diff-table td {
+  padding: 0 4px;
+  white-space: pre;
+}
+
+.xyag-diff-table td:first-child,
+.xyag-diff-table td:nth-child(2) {
+  color: var(--text-faint);
+  text-align: right;
+  width: 2.5em;
+  user-select: none;
+}
+
+.xyag-diff-table td:last-child {
+  width: 100%;
+}
+
+.xyag-diff-table .diff-context td:last-child { color: var(--text-muted); }
+.xyag-diff-table .diff-added td:last-child { color: var(--color-green); }
+.xyag-diff-table .diff-removed td:last-child { color: var(--color-red); }
+.xyag-diff-table .diff-changed td:last-child { color: var(--color-yellow); }
+.xyag-diff-table .diff-removed { text-decoration: line-through; }
+
+.xyag-tool-log {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: 0.8em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.xyag-tool-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--background-primary-alt);
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+/* 代码块复制按钮 */
+.xyag-copy-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1;
+  line-height: 1.4;
+}
+
+pre:hover .xyag-copy-btn {
+  opacity: 1;
+}
+
+.xyag-copy-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* Obsidian Markdown 渲染容器 */
+.xyag-obsidian-md {
+  font-size: var(--editor-font-size);
+  line-height: 1.6;
+}
+
+.xyag-obsidian-md :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0.3em 0;
+}
+
+.xyag-obsidian-md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8em;
+}
+
+.xyag-obsidian-md th,
+.xyag-obsidian-md td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 4px 8px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Chat Input Area
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-input-container {
+  position: relative;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  margin-top: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: outline 0.12s;
+}
+
+/* OpenCode agent 模式着色（plan / build） */
+.xyag-agent-build .xyag-input-container {
+  border: 1px solid var(--background-modifier-error);
+}
+
+.xyag-agent-plan .xyag-input-container {
+  border: 1px solid var(--interactive-accent);
+}
+
+.xyag-chat-input {
+  width: 100%;
+  background: transparent;
+  color: var(--text-normal);
+  border: none;
+  resize: none;
+  min-height: calc(1.4em * 3 + 8px);
+  line-height: 1.4;
+  padding: 12px 14px 8px;
+  font-size: 0.8em;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.xyag-chat-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.xyag-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 5px 10px 5px 12px;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.xyag-toolbar > * {
+  min-width: 0;
+}
+
+/* 短按钮固定，完全不收缩 */
+.xyag-attach-btn,
+.xyag-context-indicator,
+.xyag-wiki-btn,
+.xyag-send-btn {
+  flex: 0 0 auto;
+}
+
+/* ========= 重点：区分收缩权重 ========= */
+/* 【模型选择】一般名字很长，优先压缩 */
+.xyag-model-select {
+  flex: 0 3 auto;
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 【等级选择】名字短，尽量保留，最后才压缩 */
+.xyag-level-select {
+  flex: 0 0.5 auto;
+  max-width: 6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Attachments, Wiki Bar & Send Button
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-attach-preview {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px 0;
+}
+
+.xyag-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.xyag-attach-btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.xyag-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background-color: var(--background-modifier-border);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.xyag-quote-chip {
+  background-color: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border-hover);
+}
+
+.xyag-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.xyag-send-btn:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.xyag-send-btn.is-stop {
+  background-color: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+.xyag-send-btn.is-stop:hover {
+  background-color: var(--background-modifier-error-hover);
+}
+
+.xyag-wiki-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  min-height: 28px;
+}
+
+.xyag-wiki-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.xyag-wiki-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* 拖拽附件悬停态 */
+.xyag-drag-over {
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: -4px;
+}
+
+/* 朗读状态指示器（状态栏） */
+.xyag-speak-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--interactive-accent);
+  transition: background 0.12s;
+}
+
+.xyag-speak-indicator:hover {
+  background: var(--background-modifier-hover);
+}
+
+.xyag-speak-indicator svg {
+  animation: xyag-speak-pulse 1s ease-in-out infinite;
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes xyag-speak-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.2); opacity: 0.6; }
+}
+
+/* 工具栏下拉触发器 */
+.xyag-model-select,
+.xyag-level-select {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 6px 2px 18px;
+  position: relative;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.xyag-model-select::before,
+.xyag-level-select::before {
+  content: "▼";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.6em;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.xyag-model-select.is-open::before,
+.xyag-level-select.is-open::before {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.xyag-model-select:hover,
+.xyag-level-select:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.xyag-status-dot.is-on { background: var(--color-green); }
+.xyag-status-dot.is-off { background: var(--text-muted); }
+
+/* ═══════════════════════════════════════════════════════
+   Unified Popup Menu
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-popup {
+  position: fixed;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  min-width: 80px;
+  padding: 4px 0;
+  z-index: 1000;
+  /* 高度受限时列表在弹层内部滚动，别让内容溢出到屏幕外 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /*
+   * 关键：max-height 必须按 border-box 算。
+   * 默认的 content-box 下，max-height 只管内容高度，
+   * 加上内边距和边框后弹层会比「可用空间」高出十来像素，
+   * 于是收边逻辑误判为溢出，把弹层推离触发器 ——
+   * 轻则看着没对齐，重则盖住触发器，点第二下反而点到弹层上，
+   * 表现成「必须选一项才能关掉」。
+   */
+  box-sizing: border-box;
+}
+
+.xyag-selection-popup {
+  position: fixed;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  display: flex;
+  gap: 2px;
+  z-index: 1000;
+}
+
+.xyag-selection-popup .xyag-msg-action {
+  opacity: 1;
+  padding: 4px 8px;
+}
+
+.xyag-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small, 13px);
+  cursor: pointer;
+  color: var(--text-normal);
+}
+
+.xyag-popup-item:hover,
+.xyag-popup-item.is-active {
+  background: var(--menu-item-hover-bg, var(--background-modifier-hover));
+}
+
+.xyag-popup-check {
+  font-size: 0.85em;
+  min-width: 16px;
+  text-align: center;
+  color: var(--text-accent);
+  flex-shrink: 0;
+}
+
+.xyag-popup-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xyag-popup-suffix {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.xyag-popup-item:hover .xyag-popup-suffix {
+  opacity: 1;
+}
+
+.xyag-popup-suffix-btn {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.xyag-popup-suffix-btn:hover {
+  color: var(--text-accent);
+}
+
+.xyag-popup-suffix-btn.danger:hover {
+  color: var(--color-red);
+}
+
+/* 确保提示显示在下拉菜单上层 */
+.tooltip {
+  z-index: 10000 !important;
+}
+
+.xyag-popup-separator {
+  height: 1px;
+  background: var(--background-modifier-border);
+  margin: 4px 10px;
+}
+
+.xyag-popup-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small, 13px);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.xyag-popup-group-title:hover {
+  background: var(--menu-item-hover-bg, var(--background-modifier-hover));
+}
+
+.xyag-popup-arrow {
+  font-size: 0.6em;
+  color: var(--text-muted);
+  min-width: 10px;
+}
+
+.xyag-popup-group-children.is-collapsed {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Modal
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-modal-container {
+  max-width: 700px;
+  overflow-x: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.xyag-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -8px;
+}
+
+.xyag-modal-mode-label {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background-color: var(--tag-background);
+  color: var(--tag-color);
+}
+
+.xyag-modal-content-area {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.6;
+  padding: 16px;
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.xyag-modal-btn-row {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 0 0;
+}
+
+.xyag-modal-btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.xyag-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  cursor: pointer;
+}
+
+.xyag-btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Settings — 状态卡片
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-settings-status {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.xyag-settings-status-row {
+  display: grid;
+  grid-template-columns: 18px minmax(78px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.xyag-settings-status-icon,
+.xyag-setting-icon {
+  display: inline-flex;
+  color: var(--interactive-accent);
+}
+
+.xyag-settings-status-icon svg,
+.xyag-setting-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.xyag-settings-status-label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.xyag-settings-status-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xyag-settings-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.xyag-settings-status-stamp {
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.xyag-settings-status-warning {
+  padding: 6px 8px;
+  border: 1px solid var(--text-warning);
+  border-radius: 6px;
+  background: var(--background-modifier-error-hover);
+  color: var(--text-warning);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.xyag-status-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.xyag-status-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.xyag-status-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Settings — Tab Bar
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 0 14px;
+}
+
+.xyag-settings-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--background-primary);
+  cursor: pointer;
+}
+
+.xyag-settings-tab.is-active {
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+  background: var(--interactive-accent);
+}
+
+.xyag-settings-tab-icon,
+.xyag-settings-tab-icon svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.xyag-settings-tab span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Settings — 带图标的 Setting
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-setting-name-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.xyag-setting-with-icon {
+  min-width: 0;
+}
+
+/* 左栏标签吃掉剩余空间：允许收缩，但不被右侧控件按内容撑爆 */
+.xyag-setting-with-icon .setting-item-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * 右栏控件固定占 30%：所有设置行的控件等宽，不再随左栏文案长短忽宽忽窄。
+ * 固定比例也顺带保证控件不越界——否则原生 <select> 会被最长 option 撑宽、盖住左侧标签。
+ */
+.xyag-setting-with-icon .setting-item-control {
+  flex: 0 0 auto;
+  width: 30%;
+  max-width: 30%;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/*
+ * 设置面板内所有下拉框：不越界、长选项截断。
+ * 原生 <select> 在 Chromium 关闭态不一定显示省略号，真正兜底的是 max-width——
+ * 它保证控件不越界、不覆盖左栏。
+ */
+.xyag-setting-with-icon .setting-item-control select.dropdown,
+.xyag-setting-with-icon .setting-item-control .dropdown,
+.xyag-api-provider-row select.dropdown {
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Settings — 卡片（API Provider / Agent / Prompt 复用）
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-api-provider-row {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+}
+
+.xyag-api-provider-row.is-active {
+  border-color: var(--interactive-accent);
+}
+
+.xyag-api-provider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.xyag-api-provider-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-normal);
+  font-size: 13px;
+}
+
+.xyag-api-provider-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.xyag-api-provider-field {
+  display: grid;
+  grid-template-columns: minmax(86px, 120px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.xyag-api-provider-content .xyag-api-provider-field + .xyag-api-provider-field {
+  margin-top: 12px;
+}
+
+.xyag-api-provider-input {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.xyag-api-provider-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+}
+
+.xyag-api-provider-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* 自绘下拉框：仿 Obsidian 原生 select 的观感 */
+.xyag-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small, 13px);
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.xyag-select:hover {
+  border-color: var(--interactive-accent);
+}
+
+.xyag-select:focus-visible {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus, rgba(127, 109, 242, 0.25));
+}
+
+.xyag-select.is-open {
+  border-color: var(--interactive-accent);
+}
+
+.xyag-select-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.xyag-select-chevron {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.xyag-select-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.xyag-select.is-open .xyag-select-chevron {
+  transform: rotate(180deg);
+}
+
+/* 设置面板：下拉框吃满右栏剩余宽度，名字过长就省略 */
+.xyag-setting-with-icon .setting-item-control .xyag-select {
+  flex: 1 1 auto;
+  min-width: 140px;
+  max-width: 280px;
+}
+
+/* 表单格子 / 表格单元格里，自绘下拉要占满整格 */
+.xyag-api-provider-field > .xyag-select,
+.xyag-skills-table td .xyag-select {
+  width: 100%;
+}
+
+/* Agent 卡片图标与通道徽章 */
+.xyag-agent-card-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--interactive-accent);
+}
+
+.xyag-agent-card-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.xyag-agent-badge {
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.xyag-agent-badge-api {
+  background: var(--tag-background);
+  color: var(--tag-color);
+}
+
+.xyag-agent-badge-cli {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.xyag-field-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+.xyag-mcp-disabled {
+  color: var(--text-faint);
+}
+
+.xyag-settings-desc {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+
+.xyag-settings-empty {
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Settings — OpenCode 接口自检
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-capability {
+  margin: 4px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.xyag-capability-item {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: var(--font-monospace);
+  word-break: break-all;
+}
+
+.xyag-capability-ok { color: var(--text-success); border-color: var(--color-green); }
+.xyag-capability-fail { color: var(--text-error); border-color: var(--text-error); }
+.xyag-capability-critical { background: var(--background-modifier-error-hover); }
+.xyag-capability-running { color: var(--text-muted); }
+
+/* ═══════════════════════════════════════════════════════
+   Settings — Skills 表格 / 生成输入
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-skills-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.xyag-skills-table th,
+.xyag-skills-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 13px;
+}
+
+.xyag-skills-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.xyag-skills-table td:last-child {
+  width: 120px;
+  text-align: center;
+}
+
+.xyag-skills-generate-input {
+  width: calc(100% - 20px);
+  min-height: 70px;
+  margin: 4px 10px 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Skill / @ 弹出面板（聊天输入框上方）
+   ═══════════════════════════════════════════════════════ */
+
+.xyag-skill-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+}
+
+.xyag-skill-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.xyag-skill-popup-item:last-child {
+  border-bottom: none;
+}
+
+.xyag-skill-popup-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.xyag-skill-popup-item.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.xyag-skill-popup-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-normal);
+  flex-shrink: 0;
+}
+
+.xyag-skill-popup-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* �T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T
+   ����ֶΣ���չʾ����Ӱ�������ģ�
+   �T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T */
+
+.xyag-topic {
+  margin: 2px 0 6px;
+}
+
+.xyag-topic-details {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background-color: var(--background-secondary-alt);
+  overflow: hidden;
+}
+
+.xyag-topic-summary {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.xyag-topic-summary:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+.xyag-topic-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 6px 8px;
+}
+
+.xyag-topic-input {
+  width: 100%;
+  margin: 4px 0 10px;
+}
+
+.xyag-topic-details[open] > .xyag-topic-summary {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.xyag-topic-details > .xyag-topic-summary::marker {
+  color: var(--text-faint);
+}
