@@ -1442,18 +1442,21 @@ pre:hover .xyag-copy-btn {
   font-weight: 600;
 }
 
-/* Agent 提示词标签右侧的「恢复默认」小按钮 */
+/* Agent 提示词下方的「恢复默认」：落在两列 grid 的输入框列，靠右 */
+.xyag-agent-reset-row {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .xyag-agent-reset-btn {
-  margin-left: 8px;
-  padding: 1px 8px;
+  padding: 2px 10px;
   font-size: 11px;
-  font-weight: 400;
   border-radius: 4px;
   border: 1px solid var(--background-modifier-border);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  vertical-align: middle;
 }
 
 .xyag-agent-reset-btn:hover {

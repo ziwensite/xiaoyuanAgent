@@ -587,11 +587,17 @@ export function showPopup(
 
   // 触发器滚动 / 窗口变化时重新贴一次，弹层不能跟着漂走。
   // 用捕获阶段监听 scroll，内层滚动容器（设置面板的标签页）也能收到。
-  doc.addEventListener("scroll", scheduleReposition, listenerOptions);
+  // 但要排除弹层自己的滚动：reposition 会把 maxHeight 清成 "none" 再量高，
+  // 弹层内部一滚就被重置回顶部 —— 表现为「下拉菜单不能滚动」。
+  const onDocScroll = (ev: Event): void => {
+    if (ev.target instanceof Node && popup.contains(ev.target)) return;
+    scheduleReposition();
+  };
+  doc.addEventListener("scroll", onDocScroll, listenerOptions);
   win.addEventListener("resize", scheduleReposition);
   cleanups.push(() => {
     if (rafId) winOf(trigger).cancelAnimationFrame(rafId);
-    doc.removeEventListener("scroll", scheduleReposition, listenerOptions);
+    doc.removeEventListener("scroll", onDocScroll, listenerOptions);
     win.removeEventListener("resize", scheduleReposition);
   });
 

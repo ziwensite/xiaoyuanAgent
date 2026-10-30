@@ -131,7 +131,6 @@ ensureDefaultAgent(s);
 updateHeader();
     ctx.refreshChatView();
   });
-  nameField.createDiv({ cls: "xyag-field-hint", text: t("setting.agents.name.desc") });
 
   // 头像
   const avatarField = content.createDiv({ cls: "xyag-api-provider-field" });
@@ -157,38 +156,77 @@ setIcon(iconSpan, agent.avatar);
   // 通道
   const channelField = content.createDiv({ cls: "xyag-api-provider-field" });
   channelField.createSpan({ cls: "xyag-api-provider-label", text: t("setting.agents.channel") });
-  channelField.appendChild(
-createSelectField({
-      options: [
-        { value: "api", label: t("setting.agents.channel.api") },
-        { value: "cli", label: t("setting.agents.channel.cli") },
-      ],
-      value: agent.channel,
-      ariaLabel: t("setting.agents.channel"),
-      onSelect: async (val) => {
-        agent.channel = val as AgentChannel;
-        // 前台 Agent 换通道时同步 execMode（见 DESIGN.md Q1）
-ensureDefaultAgent(s);
-        await ctx.plugin.saveSettings();
-updateHeader();
-        ctx.refreshChatView();
-      },
-    }).el,
-  );
+  const channelSelect = createSelectField({
+    options: [
+      { value: "api", label: t("setting.agents.channel.api") },
+      { value: "cli", label: t("setting.agents.channel.cli") },
+    ],
+    value: agent.channel,
+    ariaLabel: t("setting.agents.channel"),
+    onSelect: async (val) => {
+      agent.channel = val as AgentChannel;
+      // 前台 Agent 换通道时同步 execMode（见 DESIGN.md Q1）
+      ensureDefaultAgent(s);
+      await ctx.plugin.saveSettings();
+      updateHeader();
+      renderModelSelect();
+      ctx.refreshChatView();
+    },
+  });
+  channelField.appendChild(channelSelect.el);
 
-  // 模型（文本框，留空=通道默认）
+  // 模型（与通道联动）：
+  // 列出全部通道的模型，标签带通道前缀；选中即把通道切过去 ——
+  // 选了 CLI 模型 agent 就是 CLI 通道，反之亦然，两个字段不打架。
+  // 值为 "channel:model"，避免同名模型跨通道时分不清归属。
   const modelField = content.createDiv({ cls: "xyag-api-provider-field" });
   modelField.createSpan({ cls: "xyag-api-provider-label", text: t("setting.agents.model") });
-  const modelInput = modelField.createEl("input", {
-    cls: "xyag-api-provider-input",
-    attr: { placeholder: agent.channel === "cli" ? t("setting.agents.model.cliHint") : t("setting.agents.model.apiHint") },
-  });
-  modelInput.value = agent.model || "";
-  modelInput.addEventListener("change", async () => {
-    agent.model = modelInput.value.trim() || undefined;
-    await ctx.plugin.saveSettings();
-  });
-  modelField.createDiv({ cls: "xyag-field-hint", text: t("setting.agents.model.desc") });
+  const allModelOptions = () => {
+    const empty = { value: "", label: t("setting.agents.model.default") };
+    const cliOpts = (s.opencodeModels || []).map((m) => ({
+      value: `cli:${m.value}`,
+      label: `${t("setting.agents.channel.cli")} · ${m.label}`,
+    }));
+    const apiOpts: { value: string; label: string }[] = [];
+    const seen = new Set<string>();
+    for (const p of s.apiProviders || []) {
+      const model = p.model?.trim();
+      if (model && !seen.has(model)) {
+        seen.add(model);
+        apiOpts.push({ value: `api:${model}`, label: `${t("setting.agents.channel.api")} · ${p.name} · ${model}` });
+      }
+    }
+    return [empty, ...cliOpts, ...apiOpts];
+  };
+  const modelWrap = modelField.createDiv();
+  const renderModelSelect = () => {
+    modelWrap.empty();
+    modelWrap.appendChild(
+      createSelectField({
+        options: allModelOptions(),
+        value: agent.model ? `${agent.channel}:${agent.model}` : "",
+        ariaLabel: t("setting.agents.model"),
+        onSelect: async (val) => {
+          if (!val) {
+            agent.model = undefined;
+          } else {
+            const idx = val.indexOf(":");
+            const ch = val.slice(0, idx) as AgentChannel;
+            agent.model = val.slice(idx + 1);
+            if (ch !== agent.channel) {
+              agent.channel = ch;
+              channelSelect.setValue(ch);
+              ensureDefaultAgent(s);
+              updateHeader();
+            }
+          }
+          await ctx.plugin.saveSettings();
+          ctx.refreshChatView();
+        },
+      }).el,
+    );
+  };
+  renderModelSelect();
 
   // 能力简介（一句话，注入群聊名单供其它 Agent 判断委托对象）
   const capField = content.createDiv({ cls: "xyag-api-provider-field" });
@@ -202,19 +240,20 @@ updateHeader();
     agent.capability = capInput.value.trim() || undefined;
     await ctx.plugin.saveSettings();
   });
-  capField.createDiv({ cls: "xyag-field-hint", text: t("setting.agents.capability.desc") });
 
   // 系统提示词
   const promptField = content.createDiv({ cls: "xyag-api-provider-field" });
-  const promptLabel = promptField.createSpan({ cls: "xyag-api-provider-label", text: t("setting.agents.prompt") });
-  // 恢复默认：提示词和能力简介一起重置为当前语言的出厂文案
-  const resetBtn = promptLabel.createEl("button", { cls: "xyag-agent-reset-btn", text: t("setting.agents.resetDefault") });
+  promptField.createSpan({ cls: "xyag-api-provider-label", text: t("setting.agents.prompt") });
   const promptArea = promptField.createEl("textarea", { cls: "xyag-api-provider-input", attr: { rows: "4" } });
   promptArea.value = agent.systemPrompt;
   promptArea.addEventListener("change", async () => {
     agent.systemPrompt = promptArea.value;
     await ctx.plugin.saveSettings();
   });
+  // 恢复默认：提示词和能力简介一起重置为当前语言的出厂文案。
+  // 放在 textarea 下方右对齐的一行，不和标签挤在一起
+  const resetRow = promptField.createDiv({ cls: "xyag-agent-reset-row" });
+  const resetBtn = resetRow.createEl("button", { cls: "xyag-agent-reset-btn", text: t("setting.agents.resetDefault") });
   resetBtn.addEventListener("click", async () => {
     agent.systemPrompt = defaultPromptFor(agent);
     agent.capability = defaultCapabilityFor(agent);
