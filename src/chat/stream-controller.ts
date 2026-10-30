@@ -7,6 +7,7 @@ import { callAIWithHTTPStreaming, callAISession, getVaultBasePath } from "../ai"
 import { combineAbort } from "../api-client";
 import { buildAgentMessages, extractAgentDelegations, resolveAgentTarget } from "../agent-registry";
 import { t } from "../i18n";
+import { askPermission } from "../modals";
 import {
   addMessage,
   addStreamingMessage,
@@ -109,7 +110,21 @@ export async function sendMessage(ctx: ChatCtx): Promise<void> {
     ctx.pendingDiffs = null;
     ctx.setProcessingState(false);
     ctx.inputEl.focus();
+    // 一轮结束后刷新上下文占用（chip 会异步去查一次，skipSync 避免顺带触发模型同步）
+    ctx.rebuildToolbar({ skipSync: true });
   }
+}
+
+/**
+ * 长会话作用域。
+ *
+ * opencode 的 project 由目录派生，我们所有会话都在同一个 project 下，它只划分
+ * 「能读写哪些文件」，不划分「哪段对话」。所以上下文单位要自己定：
+ * 群聊所有聊天记录共用一条，每个 Agent 的独立会话线各自一条。
+ */
+function sessionScope(ctx: ChatCtx): string {
+  const owner = ctx.sessions.find((x) => x.id === ctx.currentSessionId)?.ownerAgentId;
+  return owner ? `agent:${owner}` : "group";
 }
 
 export async function callAI(
@@ -149,8 +164,24 @@ export async function callAI(
   // 同时把最后一条（刚发出的用户消息）从历史里去掉，
   // 因为 buildAgentMessages 会把 enrichedMessage 再追加一次。
   const lastIsUser = ctx.messages.length > 0 && ctx.messages[ctx.messages.length - 1].role === "user";
-  const historyForPrompt = lastIsUser ? ctx.messages.slice(0, -1) : ctx.messages;
+
+  // 会话绑定：同一作用域（群聊 / 某个 Agent 的独立线）只维护一条 OpenCode 会话，
+  // 这一轮只发新增内容，历史由服务端保存，不再每轮重发全文。
+  const scope = sessionScope(ctx);
+  const bindings = (s.opencodeSessionBindings ??= {});
+  const boundSessionId = bindings[scope] || "";
+  // 刚重置过上下文：这一轮只重建「系统提示 + 本轮问题」，不回放历史
+  const resetPending = !!s.opencodeContextReset?.[scope];
+  const historyForPrompt = resetPending ? [] : lastIsUser ? ctx.messages.slice(0, -1) : ctx.messages;
   const prompt = buildAgentMessages(historyForPrompt, systemPrompt, enrichedMessage, source);
+
+  const rememberBinding = (id: string) => {
+    // 旧绑定可能已在服务端失效（被删/换库），此时会新建一条，绑定必须跟着更新
+    if (bindings[scope] === id) return;
+    bindings[scope] = id;
+    if (s.opencodeContextReset?.[scope]) delete s.opencodeContextReset[scope];
+    void ctx.plugin.saveSettings();
+  };
 
   // streamingId 必须放在 produce 外面：CLI 失败后 produce(true) 会重试，
   // 若每次都新建局部变量，就会再插一条气泡，上一条残缺的永远留在会话里。
@@ -189,6 +220,11 @@ export async function callAI(
             onDiffs,
             onToolProgress: onTool,
             agent: target,
+            opencodeSessionId: boundSessionId,
+            incrementalPrompt: enrichedMessage,
+            onSessionBound: rememberBinding,
+            // 权限请求是服务端阻塞态，弹窗让用户拍板；关闭弹窗按拒绝处理
+            onPermissionRequest: (req) => askPermission(ctx.app, req),
           })
         : await callAISession({
             prompt,

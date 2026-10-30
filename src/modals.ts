@@ -4,7 +4,7 @@ import type XiaoyuanAgentPlugin from "./main";
 import { callAISession, getVaultBasePath } from "./ai";
 import { VIEW_TYPE_XIAOYUAN_AGENT_CHAT } from "./constants";
 import { getDefaultAgent } from "./agent-registry";
-import type { PromptTemplate } from "./types";
+import type { PromptTemplate, OpenCodePermissionRequest, OpenCodePermissionDecision } from "./types";
 import { openInEditor } from "./open-in-editor";
 import { createActionBtn } from "./action-buttons";
 import { registerSelectionListener } from "./selection-popup";
@@ -308,4 +308,68 @@ export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
   onChooseItem(item: TFolder): void {
     this.onChoose(item.path);
   }
+}
+
+/**
+ * 权限确认弹窗：OpenCode 在这一步暂停等人拍板，不 reply 整轮就一直不结束。
+ * 关掉弹窗等同于「拒绝」，避免用户误关之后这一轮永远挂着。
+ */
+export class PermissionRequestModal extends Modal {
+  private req: OpenCodePermissionRequest;
+  private resolve: (d: OpenCodePermissionDecision) => void;
+  private settled = false;
+
+  constructor(
+    app: App,
+    req: OpenCodePermissionRequest,
+    resolve: (d: OpenCodePermissionDecision) => void,
+  ) {
+    super(app);
+    this.req = req;
+    this.resolve = resolve;
+  }
+
+  private finish(decision: OpenCodePermissionDecision): void {
+    if (this.settled) return;
+    this.settled = true;
+    this.resolve(decision);
+    this.close();
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: t("permission.title") });
+    const body = contentEl.createDiv({ cls: "xyag-permission-body" });
+    body.createDiv({ text: t("permission.action", this.req.action || "?") });
+    const resources = (this.req.resources || []).filter(Boolean);
+    if (resources.length) body.createDiv({ text: t("permission.resources", resources.join(", ")) });
+    if (this.req.message) body.createDiv({ text: t("permission.message", this.req.message) });
+
+    const actions = contentEl.createDiv({ cls: "modal-button-container" });
+    const once = actions.createEl("button", { text: t("permission.once"), cls: "mod-cta" });
+    const always = actions.createEl("button", { text: t("permission.always") });
+    const reject = actions.createEl("button", { text: t("permission.reject") });
+    once.addEventListener("click", () => this.finish("once"));
+    always.addEventListener("click", () => this.finish("always"));
+    reject.addEventListener("click", () => this.finish("reject"));
+  }
+
+  onClose(): void {
+    // 未做选择就关闭 → 拒绝
+    if (!this.settled) {
+      this.settled = true;
+      this.resolve("reject");
+    }
+    this.contentEl.empty();
+  }
+}
+
+export function askPermission(
+  app: App,
+  req: OpenCodePermissionRequest,
+): Promise<OpenCodePermissionDecision> {
+  return new Promise((resolve) => {
+    new PermissionRequestModal(app, req, resolve).open();
+  });
 }

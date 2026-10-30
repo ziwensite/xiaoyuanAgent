@@ -1,10 +1,11 @@
 import type { SettingsCtx } from "./context";
 import manifest from "../../manifest.json";
 import { getAgentForChannel } from "../agent-registry";
-import { getActiveProvider, VERIFIED_OPENCODE_VERSION } from "../constants";
+import { getActiveProvider, VERIFIED_OPENCODE_VERSION, VIEW_TYPE_XIAOYUAN_AGENT_CHAT } from "../constants";
 import { t } from "../i18n";
 import { getVaultBasePath } from "../server";
-import { XiaoyuanAgentSettings } from "../types";
+import type { XiaoyuanAgentSettings, ChatSession } from "../types";
+import { scopeOf, readContextStatus } from "../context-control";
 import { compareVersions, majorVersion } from "../utils";
 import { Notice } from "obsidian";
 import { statusStore } from "./status-store";
@@ -58,6 +59,40 @@ function applyOpenCodeVersion(ctx: SettingsCtx, card: HTMLElement, version: stri
 }
 
 /**
+ * 刷新状态卡里的「上下文」行。
+ *
+ * 作用域跟随当前打开的聊天视图（群聊 / 某个 Agent 的独立线），没有聊天视图时
+ * 退回群聊。只读已经绑定的开放会话，不为了看一眼状态去拉起服务。
+ */
+export async function refreshContextRow(ctx: SettingsCtx, gen?: number): Promise<void> {
+  const card = ctx.currentStatusCard();
+  if (!card) return;
+  const leaves = ctx.app.workspace.getLeavesOfType(VIEW_TYPE_XIAOYUAN_AGENT_CHAT);
+  const view = leaves[0]?.view as
+    | { sessions?: ChatSession[]; currentSessionId?: string }
+    | undefined;
+  const scope = view?.sessions?.length ? scopeOf(view) : "group";
+
+  let value = t("status.context.none");
+  try {
+    const st = await readContextStatus(ctx.plugin, scope);
+    if (gen !== undefined && gen !== ctx.statusGeneration) return;
+    if (st) {
+      if (st.limit && st.tokens !== null) {
+        const pct = Math.min(100, Math.round((st.tokens / st.limit) * 100));
+        value = `${pct}% · ${t("chat.context.count", String(st.messageCount))}`;
+      } else {
+        value = t("chat.context.count", String(st.messageCount));
+      }
+      if (st.compacted) value += ` · ${t("chat.context.compacted")}`;
+    }
+  } catch {
+    // 读不到就保持「首轮对话后建立」，不把设置页刷出一行错误
+  }
+  ctx.updateRow(card, 6, value);
+}
+
+/**
  * 把模型/代理等纯设置派生值直绑到状态卡对应行（不重探连接）。
  * 由 `saveSettings` 钩子在任意设置落盘后调用，覆盖设置面板与聊天工具栏的改动。
  */
@@ -68,6 +103,7 @@ export function applySettingsDerivedRows(ctx: SettingsCtx): void {
   ctx.updateRow(card, 3, getAgentForChannel(s, "cli")?.model || s.opencode.model || t("status.notSelected"));
   ctx.updateRow(card, 4, getAgentForChannel(s, "api")?.model || getActiveProvider(s)?.model || t("status.notSelected"));
   ctx.updateRow(card, 5, s.proxyEnabled ? s.proxyUrl : t("status.closed"));
+  void refreshContextRow(ctx);
 }
 
 // 订阅只需注册一次；状态卡 DOM 在切标签时不销毁，回调每次重新查活节点
@@ -85,6 +121,9 @@ export function buildStatusCard(ctx: SettingsCtx, container: HTMLElement) {
   ctx.addStatusRow(card, "box", t("status.cli.model"), getAgentForChannel(s, "cli")?.model || s.opencode.model || t("status.notSelected"));
   ctx.addStatusRow(card, "box", t("status.api.model"), getAgentForChannel(s, "api")?.model || getActiveProvider(s)?.model || t("status.notSelected"));
   ctx.addStatusRow(card, "waypoints", t("status.proxy"), s.proxyEnabled ? s.proxyUrl : t("status.closed"));
+  // 上下文行：内容异步拉取（要读服务端会话），先占位再刷新
+  ctx.addStatusRow(card, "gauge", t("status.context"), t("status.context.none"));
+  void refreshContextRow(ctx, ctx.statusGeneration);
 
   const warn = card.createDiv({ cls: "xyag-settings-status-warning" });
   warn.style.display = "none";
@@ -112,6 +151,7 @@ export function buildStatusCard(ctx: SettingsCtx, container: HTMLElement) {
       // 时间戳存在字段上：写完立刻 display() 会重建 DOM，局部变量会被丢掉
       ctx.lastSyncedAt = new Date().toLocaleTimeString();
       stamp.textContent = t("status.syncedAt", ctx.lastSyncedAt);
+      await refreshContextRow(ctx, ctx.statusGeneration);
     } finally {
       refreshBtn.disabled = false;
       refreshBtn.setText(t("status.refresh"));

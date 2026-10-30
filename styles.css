@@ -1703,9 +1703,9 @@ pre:hover .xyag-copy-btn {
   white-space: nowrap;
 }
 
-/* ¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T
-   »°Ìâ·Ö¶Î£¨½öÕ¹Ê¾£¬²»Ó°ÏìÉÏÏÂÎÄ£©
-   ¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   è¯é¢˜åˆ†æ®µï¼ˆä»…å±•ç¤ºç”¨ï¼Œä¸å½±å“ä¸Šä¸‹æ–‡ï¼‰
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 .xyag-topic {
   margin: 2px 0 6px;
@@ -1750,4 +1750,59 @@ pre:hover .xyag-copy-btn {
 
 .xyag-topic-details > .xyag-topic-summary::marker {
   color: var(--text-faint);
+}
+
+/* ä¸Šä¸‹æ–‡çŠ¶æ€æŒ‡ç¤ºï¼šæ˜¾ç¤ºå ç”¨ç™¾åˆ†æ¯”ï¼Œç‚¹å‡»ç»™å‡ºæ˜ç»†ä¸ã€Œå‹ç¼© / é‡ç½®ã€ */
+.xyag-context-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-modifier-hover);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.xyag-context-chip:hover {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+
+.xyag-context-chip.is-open {
+  color: var(--text-normal);
+}
+
+.xyag-context-chip.is-high {
+  color: var(--text-warning);
+  border-color: var(--text-warning);
+}
+
+.xyag-context-chip.is-over {
+  color: var(--text-error);
+  border-color: var(--text-error);
+}
+
+.xyag-context-info {
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: normal;
+}
+
+/* æƒé™è¯·æ±‚å¼¹çª—ï¼šæ¯æ¡ä¿¡æ¯ä¸€è¡Œï¼Œé•¿èµ„æºåˆ—è¡¨å…è®¸æ¢è¡Œ */
+.xyag-permission-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 14px;
+  font-size: 0.9em;
+  color: var(--text-normal);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }

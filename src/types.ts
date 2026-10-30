@@ -82,6 +82,8 @@ export interface ModelCaps {
   temperature: boolean;
   /** 模型支持的推理变体（v2 的 `Variant.Info.id`，如 low / medium / high） */
   variants?: string[];
+  /** 上下文窗口大小（v2 `Model.Info.limit.context`），用于展示上下文占用 */
+  contextLimit?: number;
 }
 
 export interface ModelEntry {
@@ -163,6 +165,21 @@ export interface OpenCodeAgentInfo {
   hidden?: boolean;
 }
 
+/** OpenCode v2 `Permission.Request`：服务端等人拍板的一条权限请求 */
+export interface OpenCodePermissionRequest {
+  id: string;
+  sessionID?: string;
+  action?: string;
+  resources?: string[];
+  save?: string[];
+  metadata?: Record<string, unknown>;
+  source?: string;
+  message?: string;
+}
+
+/** `POST /session/{id}/permission/{requestID}/reply` 的 decision */
+export type OpenCodePermissionDecision = "once" | "always" | "reject";
+
 /** 插件自建 OpenCode 实例的连接信息（url + 随机密码） */
 export interface OpenCodeServerState {
   url: string;
@@ -209,6 +226,23 @@ export interface XiaoyuanAgentSettings {
    * （密码是随机生成的，不记下来的话就没法认证）。
    */
   opencodeServerState?: OpenCodeServerState;
+
+  /**
+   * 长生命周期的 OpenCode 会话绑定：作用域 key → session id。
+   *
+   * 作用域不是「某条聊天记录」而是「哪段对话」：群聊共用 `group` 一条，
+   * 每个 Agent 的独立会话线各用 `agent:<id>` 一条。这样同一个作用域内无论
+   * 新建多少聊天记录、怎么切换，上下文都是延续的。
+   */
+  opencodeSessionBindings?: Record<string, string>;
+
+  /**
+   * 刚重置过上下文的作用域。
+   *
+   * 重置后第一条消息只发「系统提示 + 本轮问题」，不回放本地历史，
+   * 否则新会话一建出来就又被旧对话填满，这个按钮等于没用。
+   */
+  opencodeContextReset?: Record<string, true>;
 
   skills: SkillEntry[];
   promptTemplates: PromptTemplate[];

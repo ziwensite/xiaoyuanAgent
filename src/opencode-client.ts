@@ -3,7 +3,6 @@ import * as fsSync from "fs";
 import * as path from "path";
 import * as os from "os";
 import type { OpenCodeEvent } from "./types";
-import { DEFAULT_OPENCODE_PORT } from "./constants";
 import { t } from "./i18n";
 
 /**
@@ -139,17 +138,23 @@ export function combineSignals(...sigs: (AbortSignal | undefined)[]): AbortSigna
 // ============================================================================
 
 /**
- * OpenCode v2 的 `serve` 子命令**没有** --password 参数：serve 会自行决定密码并写到
- * 用户级 service.json（本机实测：`~/.config/opencode/service.json` 里只有 password
- * 字段，也正是当前在跑的那个实例的密码）。所以连接自建实例必须读这个文件。
+ * `serve` 没有 --password 参数，但支持 `OPENCODE_SERVER_PASSWORD` 环境变量（官方文档）；
+ * 不指定时由 opencode 自行生成密码并写到用户级 service.json。
+ *
+ * 顺序很重要：**state 目录里的那份才带 url / pid / version**，`.config` 下的只有
+ * password。先读 state，才能直接复用已运行的托管实例，而不是每次去猜端口。
  */
 function serviceJsonPaths(): string[] {
   const home = os.homedir();
   return [
+    process.env.XDG_STATE_HOME
+      ? path.join(process.env.XDG_STATE_HOME, "opencode", "service.json")
+      : "",
+    path.join(home, ".local", "state", "opencode", "service.json"),
+    path.join(home, ".config", "opencode", "service.json"),
     process.env.XDG_CONFIG_HOME
       ? path.join(process.env.XDG_CONFIG_HOME, "opencode", "service.json")
       : "",
-    path.join(home, ".config", "opencode", "service.json"),
     process.env.XDG_DATA_HOME
       ? path.join(process.env.XDG_DATA_HOME, "opencode", "service.json")
       : "",
@@ -164,7 +169,10 @@ function readServiceJson(): Record<string, unknown> | null {
       if (!fsSync.existsSync(file)) continue;
       const raw = fsSync.readFileSync(file, "utf8");
       const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (parsed && typeof parsed === "object") return parsed;
+      // 没有 password 的文件（半截写入 / 旧格式）直接跳过，继续找下一份
+      if (parsed && typeof parsed === "object" && typeof parsed.password === "string" && parsed.password.trim()) {
+        return parsed;
+      }
     } catch {
       // 文件可能正在被写或被锁，跳过换下一个候选
     }
@@ -187,15 +195,6 @@ export function readServiceRegistration(): { url: string; password: string } | n
   if (!password) return null;
   const url = typeof reg.url === "string" ? reg.url : "";
   return { url, password };
-}
-
-/** 由注册信息构造连接：端口优先用注册里的，否则用默认端口 */
-export function readServerConn(): ServerConn | null {
-  const reg = readServiceRegistration();
-  if (!reg) return null;
-  const port = DEFAULT_OPENCODE_PORT;
-  const url = reg.url || `http://127.0.0.1:${port}`;
-  return { url, authHeader: buildAuthHeader(reg.password) };
 }
 
 // ============================================================================
@@ -282,6 +281,33 @@ export function requestOpenCode<T>(
   return doRequest(joinUrl(base, apiPath), method, authHeader, body).then((raw) => unwrapEnvelope<T>(raw));
 }
 
+/**
+ * 阻塞等待会话进入 idle：`POST /experimental/session/{id}/wait` → 204。
+ *
+ * 断线重连后用它替代反复 GET 猜 idle：服务端自己知道这一轮什么时候收尾。
+ * requestUrl 没有 abort 能力，只能靠超时兜底；超时 / 接口不存在都返回 false，
+ * 由事件流与上层超时继续兜。
+ */
+export async function waitSessionIdle(
+  base: string,
+  authHeader: string | undefined,
+  sessionId: string,
+  timeoutMs = 60000,
+): Promise<boolean> {
+  try {
+    await doRequest(
+      joinUrl(base, `/experimental/session/${sessionId}/wait`),
+      "POST",
+      authHeader,
+      undefined,
+      timeoutMs,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 读取服务端信息：GET /api/info（该响应不走信封，unwrapEnvelope 会原样返回） */
 export function getServerInfo(
   baseUrl: string,
@@ -327,14 +353,23 @@ function parseSseFrames(buffer: string, onFrame: (payload: string) => void): str
   return rest;
 }
 
+/** 事件流连续中断多少次后放弃重连 */
+const SSE_RECONNECT_MAX = 5;
+/** 重连退避起始值，指数退避，上限 30 秒 */
+const SSE_RECONNECT_BASE_MS = 500;
+/** 一条连接活过这么久就认为它是稳定的，重新计数 */
+const SSE_STABLE_MS = 5000;
+
 /**
  * 订阅 `/api/event` 事件流。
  *
- * 与插件 API 通道的流式处理保持一致（api-client.ts 也是 fetch + ReadableStream）。
  * 结束/中止语义：
- * - 正常 EOF → onDone
- * - 被 signal abort → onDone（不算错误，ai.ts 成功收尾时本来就会 abort）
- * - 其他失败 → onError
+ * - 收到终止事件 / ai.ts 主动 abort → 由 ai.ts 自己收尾
+ * - 中途 EOF / 报错 → **不当作完成**，退避后重连（最多 5 次）
+ * - 重连成功后先回调 onReconnect，让上层用消息列表补齐断流期间丢失的内容
+ *
+ * `/api/event` 是易失流（服务端契约如此），断流期间的事件不会重放；所以重连后
+ * 必须靠 onReconnect 做一次对账，否则正文会停在断开那一刻。
  */
 export function connectSSE(
   base: string,
@@ -344,20 +379,79 @@ export function connectSSE(
   onDone?: () => void,
   onError?: (err: Error) => void,
   sessionId?: string,
+  onReconnect?: () => void,
 ): void {
-  // 优先真 SSE：只有 /api/event 才有逐字增量（推理过程、正文、工具进度都是实时的）。
-  // 三条通道依次降级：Electron net（不受 CORS、可流式）→ 渲染进程 fetch（要服务端
-  // 给 CORS）→ requestUrl 轮询（不受 CORS，但消息列表不落中间态，只能等整轮结束）。
-  if (sessionId) {
-    const degraded = () => {
-      startSseFetchWithFallback(base, authHeader, signal, onEvent, onDone, onError, sessionId);
-    };
-    if (startSseNet(base, authHeader, signal, onEvent, onDone, degraded)) return;
-    if (startSseRawSocket(base, authHeader, signal, onEvent, onDone, degraded)) return;
-    degraded();
+  // 没有 sessionId 的场景（探测/一次性监听）保持原样，不做重连
+  if (!sessionId) {
+    startSseFetch(base, authHeader, signal, onEvent, onDone, onError);
     return;
   }
-  startSseFetch(base, authHeader, signal, onEvent, onDone, onError);
+
+  let attempt = 0;
+  let reconnecting = false;
+  let stopped = false;
+  let openedAt = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const stop = () => {
+    stopped = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+  };
+  signal.addEventListener("abort", stop, { once: true });
+
+  const run = () => {
+    reconnectTimer = undefined;
+    if (stopped) return;
+    openedAt = Date.now();
+    // 轮询是最后一条通道，它能自己判断整轮结束；只有「真 SSE 出过事件后断流」
+    // 才交回重连，避免把断线当完成、也避免和轮询互相打架。
+    const degraded = () => {
+      startSseFetchWithFallback(
+        base,
+        authHeader,
+        signal,
+        handleEvent,
+        onDone,
+        onError,
+        sessionId,
+        scheduleReconnect,
+      );
+    };
+    if (startSseNet(base, authHeader, signal, handleEvent, scheduleReconnect, degraded)) return;
+    if (startSseRawSocket(base, authHeader, signal, handleEvent, scheduleReconnect, degraded)) return;
+    degraded();
+  };
+
+  function scheduleReconnect(): void {
+    if (stopped) return;
+    // 同一条连接可能同时触发 end 和 error（两个回调都会打到这里），
+    // 已经在等重连时直接返回，否则会并行开出两条连接、且计数被双倍消耗。
+    if (reconnectTimer) return;
+    // 关键：不能「收到任何事件就重置计数」。服务端连上就发 server.connected，
+    // 如果它紧接着断开，按事件重置会导致 500ms 一次无限重连、永远不退出。
+    // 只有这条连接活过 SSE_STABLE_MS 才算稳定，才允许重新从 0 计数。
+    const lived = openedAt ? Date.now() - openedAt : 0;
+    if (lived >= SSE_STABLE_MS) attempt = 0;
+    if (attempt >= SSE_RECONNECT_MAX) {
+      onError?.(new Error(t("error.streamDropped")));
+      return;
+    }
+    const delay = Math.min(30000, SSE_RECONNECT_BASE_MS * 2 ** attempt);
+    attempt += 1;
+    reconnecting = true;
+    reconnectTimer = setTimeout(run, delay);
+  }
+
+  function handleEvent(evt: OpenCodeEvent): void {
+    if (reconnecting) {
+      // 重连接通后先对账，再继续消费实时事件
+      reconnecting = false;
+      onReconnect?.();
+    }
+    onEvent(evt);
+  }
+
+  run();
 }
 
 /** Electron `net` 的最小可用面（只用到 request，避免为了类型去依赖 electron 包） */
@@ -670,6 +764,7 @@ function startSseFetchWithFallback(
   onDone: (() => void) | undefined,
   onError: ((err: Error) => void) | undefined,
   sessionId: string,
+  onPremature: () => void,
 ): void {
   const ctrl = new AbortController();
   const forwardAbort = () => ctrl.abort();
@@ -686,14 +781,19 @@ function startSseFetchWithFallback(
       onEvent(evt);
     },
     () => {
+      // 已经出过事件的流不该以 EOF 收场：交给上层重连，别当成整轮结束
       if (fellBack) return;
+      if (sawEvent) {
+        onPremature();
+        return;
+      }
       onDone?.();
     },
     (err) => {
       if (fellBack) return;
-      // 已经出过事件说明 SSE 本来是通的，这时断了就按真错误报，别降级（避免内容重复）
+      // 已经出过事件说明 SSE 本来是通的，这时断了同样重连（重连后会先对账）
       if (sawEvent) {
-        onError?.(err);
+        onPremature();
         return;
       }
       fellBack = true;

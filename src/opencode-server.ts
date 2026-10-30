@@ -1,5 +1,6 @@
 import { Notice } from "obsidian";
 import { spawn, type ChildProcess } from "child_process";
+import { randomBytes } from "crypto";
 import {
   DEFAULT_OPENCODE_PORT,
   OPENCODE_ALLOWED_HOSTS,
@@ -9,21 +10,21 @@ import {
 } from "./constants";
 import type { OpenCodeServerState } from "./types";
 import { t } from "./i18n";
-import { buildAuthHeader, candidatePasswords, getServerInfo, healthCheck } from "./opencode-client";
+import { buildAuthHeader, candidatePasswords, getServerInfo, healthCheck, readServiceRegistration } from "./opencode-client";
 import type { ServerConn } from "./opencode-client";
 
 /**
  * OpenCode 服务的建立 / 进程管理。
  *
- * 与 v2.1.4 对齐的两个要点：
+ * 连接策略只有三步，不再做多路探测：
  *
- * 1) **`serve` 没有 --password 参数**（实测 `opencode serve --help` 只有
- *    --hostname / --port / --cors / --service / --stdio）。密码由 opencode 自己生成并
- *    持久化到 `~/.config/opencode/service.json`，所以插件启动服务后是从那个文件里读
- *    密码，而不是像旧实现那样“自己生成一个密码传给 serve”。
+ * 1) 读 `~/.local/state/opencode/service.json` 拿到正在运行的托管实例（url + password），
+ *    直接用它 —— 这是绝大多数用户的实际场景。
+ * 2) 没有注册信息就用设置页里的 host:port。
+ * 3) 都没有且开了 autoStart，才自己拉起一个 `serve`，并用 `OPENCODE_SERVER_PASSWORD`
+ *    指定密码（官方文档支持的唯一方式，serve 本身没有 --password）。
  *
- * 2) **先找已有实例，再自建**。本来就有一个 opencode 在跑时直接复用（本机的
- *    28894 就是这种），避免同一个 vault 起一堆孤儿进程。
+ * 结果缓存在内存里，只有请求失败时才重新解析，避免每轮对话都做健康检查。
  */
 
 /** 设置页里的代理配置 */
@@ -37,8 +38,10 @@ let portFallbackListener: ((info: { requested: number; actual: number }) => void
 const stateListeners = new Set<(state: OpenCodeServerState | null) => void>();
 /** 记住上次成功的连接，避免每次都绕一圈探测 */
 let stickyConn: ServerConn | null = null;
-/** 上次记录的实例信息（插件重载后用来判断要不要复用） */
-let rememberedState: OpenCodeServerState | null = null;
+/** 连接缓存的写入时间：过期后允许重新解析 */
+let connCachedAt = 0;
+/** 连接缓存有效期；期间直接用缓存，不做健康检查 */
+const CONN_CACHE_MS = 60 * 1000;
 /** 插件自己拉起的进程，卸载时要收掉 */
 let autoStartedProc: ChildProcess | null = null;
 /** 同一时刻只拉起一次，避免多处并发调用导致重复 spawn */
@@ -153,77 +156,11 @@ export async function resolveOpenCodePath(hint: string): Promise<string> {
   return raw;
 }
 
-/**
- * 官方托管服务（`opencode service`）的端口是它自己挑的，换机器/重装都会变
- * （本机这次是 28894）。所以不能把某个端口写死成默认值，得问一次
- * `opencode service status`——它的输出就是 `http://127.0.0.1:28894` 这样的地址。
- */
-let managedPortCache: { port: number | null; at: number } | null = null;
-// 起一次 opencode 进程在 Windows 上要 1~3 秒（Bun 单文件二进制不小），所以探测结果
-// 要缓存久一点，否则"接口自检"这类一次性操作会被它拖慢。
-const MANAGED_PORT_CACHE_MS = 10 * 60 * 1000;
-
-/** 官方托管服务的默认监听端口（opencode service 默认就它，除非用户显式改过） */
-const OPENCODE_MANAGED_DEFAULT_PORT = 28894;
-
-async function detectManagedServicePort(cliPath?: string): Promise<number | null> {
-  if (managedPortCache && Date.now() - managedPortCache.at < MANAGED_PORT_CACHE_MS) {
-    return managedPortCache.port;
-  }
-  // 注意：28894 默认端口的直连探活已在 findOpenCodeConnection 里优先做过，
-  // 这里只在「28894 不通（用户改过托管端口）」时才走到，所以直接 spawn 查真实端口。
-  // Windows 上起 opencode 进程要 1~3 秒，靠缓存（10 分钟）和下面的失败兜底来避免抖动。
-  const bin = await resolveOpenCodePath(cliPath || "opencode");
-  const port = await new Promise<number | null>((resolve) => {
-    let out = "";
-    let done = false;
-    const settle = (value: number | null) => {
-      if (done) return;
-      done = true;
-      const m = out.match(/https?:\/\/[^:\s]+:(\d+)/);
-      resolve(m ? Number(m[1]) : value);
-    };
-    try {
-      const p = spawn(bin, ["service", "status"], {
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-        shell: process.platform === "win32",
-      });
-      p.stdout?.on("data", (c: Buffer) => {
-        out += c.toString();
-      });
-      p.stderr?.on("data", (c: Buffer) => {
-        out += c.toString();
-      });
-      p.on("error", () => settle(null));
-      p.on("close", () => settle(null));
-      setTimeout(() => {
-        if (!done) {
-          try {
-            p.kill();
-          } catch {
-            /* noop */
-          }
-          settle(null);
-        }
-      }, 3000);
-    } catch {
-      settle(null);
-    }
-  });
-  if (port) {
-    managedPortCache = { port, at: Date.now() };
-    return port;
-  }
-  // spawn 失败：宁可沿用上次缓存的端口（端口不会频繁变），也不要误判「断开」
-  // 导致状态条反复弹窗。
-  if (managedPortCache) return managedPortCache.port;
-  return null;
-}
-
 /** 用当前候选密码试着连一下，能拿到 /api/info 就算成功 */
-async function tryConnect(url: string): Promise<ServerConn | null> {
-  const passwords = candidatePasswords();
+async function tryConnect(url: string, extraPassword?: string): Promise<ServerConn | null> {
+  const passwords = [extraPassword, ...candidatePasswords()]
+    .map((p) => (p || "").trim())
+    .filter((p, i, arr): p is string => !!p && arr.indexOf(p) === i);
   for (const pw of passwords) {
     const conn: ServerConn = { url, authHeader: buildAuthHeader(pw) };
     try {
@@ -238,7 +175,8 @@ async function tryConnect(url: string): Promise<ServerConn | null> {
 
 /**
  * 启动一个 opencode serve 实例。
- * 启动后轮询健康检查（密码从 service.json 读），直到超时或进程提前退出。
+ * 用 `OPENCODE_SERVER_PASSWORD` 固定密码（官方支持的方式），启动后轮询健康检查，
+ * 直到超时或进程提前退出。
  */
 export function startTempOpenCodeServer(
   bin: string,
@@ -247,6 +185,7 @@ export function startTempOpenCodeServer(
   hostname = "127.0.0.1",
 ): Promise<{ url: string; proc: ChildProcess; password: string }> {
   const url = buildUrl(hostname, port);
+  const password = randomBytes(16).toString("hex");
   // 带上 --cors：插件渲染进程的 fetch 要拿到 Access-Control-Allow-Origin 才能读
   // /api/event（真正的逐字增量）。没有它，事件流会被浏览器以 CORS 拦掉，只能退回
   // requestUrl 轮询——而轮询读的是消息列表，中间态根本不落库，只能等到结束才有内容。
@@ -265,7 +204,7 @@ export function startTempOpenCodeServer(
     let stderr = "";
     const proc = spawn(bin, args, {
       cwd: vaultDir || process.cwd(),
-      env: buildChildEnv(),
+      env: buildChildEnv({ OPENCODE_SERVER_PASSWORD: password }),
       stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,
       shell: process.platform === "win32",
@@ -291,15 +230,16 @@ export function startTempOpenCodeServer(
     });
 
     const deadline = Date.now() + OPENCODE_START_TIMEOUT_MS;
-    // 每 500ms 试一次；密码要每次重新读，service.json 可能是启动后才写出来的
+    // 每 500ms 试一次：优先用我们注入的环境变量密码，同时兼容 serve 自行生成密码的情况
+    // （那种情况下 service.json 会在启动后写出真实密码）
     const pollTimer = setInterval(async () => {
       if (settled) return;
-      const conn = await tryConnect(url);
+      const conn = await tryConnect(url, password);
       if (conn) {
         settled = true;
         clearInterval(pollTimer);
         clearTimeout(limitTimer);
-        resolve({ url: conn.url, proc, password: extractPassword(conn) });
+        resolve({ url: conn.url, proc, password: extractPassword(conn) || password });
         return;
       }
       if (Date.now() > deadline) {
@@ -456,13 +396,18 @@ export function onOpenCodePortFallback(cb: ((info: { requested: number; actual: 
   portFallbackListener = cb;
 }
 
-/** 注入上次记录的实例信息 */
-export function setOpenCodeServerState(state?: OpenCodeServerState | null): void {
-  rememberedState = state ?? null;
-  // 换了实例就不能再复用旧连接
-  if (rememberedState && stickyConn && stickyConn.url !== rememberedState.url) {
-    stickyConn = null;
-  }
+/**
+ * 外部（插件加载 / 设置页）状态变更：丢掉连接缓存，下次重新解析。
+ * 参数保留是为了不打断现有调用方。
+ */
+export function setOpenCodeServerState(_state?: OpenCodeServerState | null): void {
+  invalidateOpenCodeConnection();
+}
+
+/** 丢掉缓存的连接，让下次 findOpenCodeConnection 重新解析（请求失败时调用） */
+export function invalidateOpenCodeConnection(): void {
+  commitConn(null);
+  connCachedAt = 0;
 }
 
 /** 注册实例状态变化的监听者 */
@@ -470,58 +415,33 @@ export function onOpenCodeServerStateChange(cb: (state: OpenCodeServerState | nu
   stateListeners.add(cb);
 }
 
-/** 查找已有 OpenCode 连接（只探测，不启动）。cliPath 用于探测托管服务端口时定位 opencode 可执行文件。 */
-export async function findOpenCodeConnection(port: number, hostname = "127.0.0.1", cliPath?: string): Promise<ServerConn | null> {
-  const url = buildUrl(hostname, port);
-  // 已记住的连接：命中即返回，不做健康检查（真实断网由 stop 事件/手动刷新纠正）。
-  if (stickyConn && stickyConn.url === url) {
+/**
+ * 查找已有 OpenCode 连接（只探测，不启动）。
+ *
+ * 只做两件事：读 service.json 里正在运行的托管实例 → 退回到设置页里的 host:port。
+ * 结果缓存 60 秒，期间不做任何健康检查；缓存失效或请求报错后再重新解析。
+ */
+export async function findOpenCodeConnection(port: number, hostname = "127.0.0.1"): Promise<ServerConn | null> {
+  if (stickyConn && Date.now() - connCachedAt < CONN_CACHE_MS) {
     return stickyConn;
   }
-  // 官方托管服务默认就是 28894（回环本机正常 <100ms），绝大多数情况这里秒命中。
-  // 必须放在「上次记录的旧实例」之前：否则会先白等旧端口的超时，再把 2~3 秒拖给
-  // 用户，且偶发全部超时就误判「断开」。
-  try {
-    const managedUrl = buildUrl(hostname, OPENCODE_MANAGED_DEFAULT_PORT);
-    if (await healthCheck(managedUrl, undefined, 1500)) {
-      const authHeader = rememberedState
-        ? buildAuthHeader(rememberedState.password)
-        : (stickyConn?.authHeader ?? "");
-      const managed: ServerConn = { url: managedUrl, authHeader };
-      commitConn(managed);
-      return managed;
-    }
-  } catch {
-    /* 28894 不通，往下找 */
-  }
-  // 28894 不通（用户改过托管端口）：spawn 问真实端口
-  const managedPort = await detectManagedServicePort(cliPath);
-  if (managedPort && managedPort !== port && managedPort !== OPENCODE_MANAGED_DEFAULT_PORT) {
-    const managed = await tryConnect(buildUrl(hostname, managedPort));
+
+  // 1) 官方托管实例：state 目录下 service.json 的 url + password 是唯一可靠来源
+  const reg = readServiceRegistration();
+  if (reg?.url) {
+    const managed = await tryConnect(reg.url, reg.password);
     if (managed) {
       commitConn(managed);
+      connCachedAt = Date.now();
       return managed;
-    }
-  }
-  // 兜底：上次记录的实例（可能是非默认端口的旧实例）
-  if (rememberedState?.url) {
-    const remembered: ServerConn = {
-      url: rememberedState.url,
-      authHeader: buildAuthHeader(rememberedState.password),
-    };
-    try {
-      if (await healthCheck(remembered.url, remembered.authHeader, 1200)) {
-        stickyConn = remembered;
-        commitConn(remembered);
-        return remembered;
-      }
-    } catch {
-      /* 旧实例没了，继续往下找 */
     }
   }
 
-  const conn = await tryConnect(url);
+  // 2) 设置页里配置的 host:port
+  const conn = await tryConnect(buildUrl(hostname, port));
   if (conn) {
     commitConn(conn);
+    connCachedAt = Date.now();
   }
   return conn;
 }
@@ -549,9 +469,8 @@ export async function ensureOpenCodeServer(
     const started = await startOpenCodeServerWithFallback(bin, vaultDir, port, hostname);
     autoStartedProc = started.proc;
     const conn: ServerConn = { url: started.url, authHeader: buildAuthHeader(started.password) };
-    stickyConn = conn;
-    rememberedState = { url: started.url, password: started.password };
-    publishServerState();
+    commitConn(conn);
+    connCachedAt = Date.now();
     return conn;
   })();
 
@@ -572,8 +491,7 @@ export function stopOpenCodeServer(): void {
     }
     autoStartedProc = null;
   }
-  stickyConn = null;
-  commitConn(null);
+  invalidateOpenCodeConnection();
 }
 
 /** 额外暴露：读取服务端信息（版本号等），供状态卡片显示 */

@@ -35,6 +35,8 @@ export interface OpenCodeModelInfo {
   variants?: { id?: string }[];
   package?: string;
   settings?: Record<string, unknown>;
+  /** 模型能力上限，`context` 即上下文窗口大小（token） */
+  limit?: { context?: number; input?: number; output?: number };
 }
 
 /** OpenCode v2 `Provider.Info` */
@@ -88,6 +90,7 @@ function mapModelCaps(m: OpenCodeModelInfo): ModelCaps {
     // 变体清单要存下来：建会话时带了模型不支持的 variant，v2 会直接判这一轮失败
     // （实测 `Variant unavailable for opencode/big-pickle: low`）。
     variants: (m.variants || []).map((v) => v?.id || "").filter(Boolean),
+    contextLimit: m.limit?.context,
   };
 }
 

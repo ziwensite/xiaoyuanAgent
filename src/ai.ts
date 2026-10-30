@@ -1,9 +1,24 @@
 import { getActiveProvider } from "./constants";
 import * as fs from "fs";
-import type { AgentConfig, XiaoyuanAgentSettings, FileDiff, OpenCodeEvent, OpenCodeEventData } from "./types";
+import type {
+  AgentConfig,
+  XiaoyuanAgentSettings,
+  FileDiff,
+  OpenCodeEvent,
+  OpenCodeEventData,
+  OpenCodePermissionRequest,
+  OpenCodePermissionDecision,
+} from "./types";
 import { ensureApiUrl, parseUnifiedDiff } from "./utils";
-import { requestOpenCode, connectSSE, combineSignals, normalizeEventType, pickDeltaText } from "./opencode-client";
-import { ensureOpenCodeServer as ensureOpenCodeServerBase } from "./opencode-server";
+import {
+  requestOpenCode,
+  connectSSE,
+  combineSignals,
+  normalizeEventType,
+  pickDeltaText,
+  waitSessionIdle,
+} from "./opencode-client";
+import { ensureOpenCodeServer as ensureOpenCodeServerBase, invalidateOpenCodeConnection } from "./opencode-server";
 import { callAIWithAPI, processAPISSEStream } from "./api-client";
 import type { SyncPlugin } from "./opencode-sync";
 import { AI_REPLY_TIMEOUT_MS, API_REQUEST_TIMEOUT_MS, VIEW_TYPE_XIAOYUAN_AGENT_CHAT } from "./constants";
@@ -156,6 +171,34 @@ function buildModelRef(
     ref.variant = variant;
   }
   return ref;
+}
+
+/**
+ * 续用长会话时对齐模型 / Agent。
+ *
+ * 会话是长生命周期的，用户可能在中途换了模型或 @ 了别的 Agent；不重新设置就会
+ * 一直沿用建会话时的选择。两个接口都是幂等的，失败也不该打断这一轮对话。
+ */
+async function applySessionSelection(
+  conn: { url: string; authHeader: string },
+  sessionId: string,
+  modelRef: { id: string; providerID: string; variant?: string } | null,
+  agentId: string | undefined,
+): Promise<void> {
+  if (modelRef) {
+    try {
+      await requestOpenCode(conn.url, `/session/${sessionId}/model`, "POST", { model: modelRef }, conn.authHeader);
+    } catch {
+      /* 对齐失败就沿用会话原模型 */
+    }
+  }
+  if (agentId) {
+    try {
+      await requestOpenCode(conn.url, `/session/${sessionId}/agent`, "POST", { agent: agentId }, conn.authHeader);
+    } catch {
+      /* 对齐失败就沿用会话原 Agent */
+    }
+  }
 }
 
 function toPluginDiff(info: V2FileDiff): FileDiff {
@@ -316,6 +359,17 @@ export interface HttpStreamOptions {
   onDiffs?: (diffs: FileDiff[]) => void;
   onToolProgress?: (tool: string, status: string) => void;
   agent?: AgentConfig;
+  /** 已绑定的 OpenCode 会话 id；传了就续用服务端上下文，服务端已删则自动新开 */
+  opencodeSessionId?: string;
+  /** 续用会话时只发这段新增内容；首次建会话仍用 prompt（含完整历史） */
+  incrementalPrompt?: string;
+  /** 新会话建立且 prompt 写入成功后回调，用于把绑定关系持久化到聊天会话 */
+  onSessionBound?: (sessionId: string) => void;
+  /**
+   * 服务端弹出一条权限请求时回调，返回值决定如何 reply。
+   * 不传时默认「允许一次」，避免后台委托卡在等人拍板的状态里直到超时。
+   */
+  onPermissionRequest?: (req: OpenCodePermissionRequest) => Promise<OpenCodePermissionDecision>;
 }
 
 export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promise<string> {
@@ -347,9 +401,48 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
   );
   if (modelRef) createBody.model = modelRef;
 
-  const session = await requestOpenCode<V2SessionInfo>(conn.url, "/session", "POST", createBody, conn.authHeader);
-  const sessionId = session?.id;
+  // 续用已绑定的会话：服务端自己维护上下文，这一轮只发新增内容。
+  // 先用 GET 探活，避免会话被删 / 服务端换库后对着不存在的 id 发 prompt。
+  let sessionId = "";
+  let reused = false;
+  // 新会话是否已写入 prompt 并被保留（决定 finally 里删不删）
+  let bound = false;
+  const boundId = options.opencodeSessionId || "";
+  if (boundId) {
+    const existing = await requestOpenCode<V2SessionInfo>(
+      conn.url,
+      `/session/${boundId}`,
+      "GET",
+      undefined,
+      conn.authHeader,
+    ).catch(() => null);
+    if (existing?.id) {
+      sessionId = boundId;
+      reused = true;
+      // 会话是长生命周期的，模型/Agent 可能已被用户改过，每轮重新对齐一次
+      await applySessionSelection(conn, sessionId, modelRef, settings.opencode.agent);
+    }
+  }
+
+  if (!sessionId) {
+    const session = await requestOpenCode<V2SessionInfo>(conn.url, "/session", "POST", createBody, conn.authHeader);
+    sessionId = session?.id || "";
+  }
   if (!sessionId) throw new Error(t("error.sessionCreate"));
+
+  // 用户点「停止」时，除了掐掉本地流，还要真的停掉服务端执行，否则 AI 会在后台
+  // 继续跑完、把已经停掉的内容算进上下文。只监听外部 signal：内部收尾用的是
+  // sseAbort，不能误伤正常结束。
+  const interruptOnAbort = () => {
+    void requestOpenCode<unknown>(
+      conn.url,
+      `/session/${sessionId}/interrupt`,
+      "POST",
+      undefined,
+      conn.authHeader,
+    ).catch(() => {});
+  };
+  signal?.addEventListener("abort", interruptOnAbort, { once: true });
 
   // v2 的一轮对话可能包含多个 assistant message（多 step），按 messageID 分桶累计
   const textByMessage = new Map<string, string>();
@@ -394,6 +487,81 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
     idleResolve = null;
     idleReject = null;
     reject?.(err);
+  };
+
+  /**
+   * 事件流断线重连后的对账：用消息列表补齐断开期间丢失的正文；
+   * 如果这一轮其实已经在断线期间结束了（time.idle 已写入），直接收尾，
+   * 否则会一直等不到 session.idle，卡到 5 分钟超时。
+   */
+  const reconcileAfterReconnect = async (): Promise<void> => {
+    try {
+      const messages = await requestOpenCode<V2AssistantMessage[]>(
+        conn.url,
+        `/session/${sessionId}/message?limit=50`,
+        "GET",
+        undefined,
+        conn.authHeader,
+      );
+      const text = extractAssistantText(messages);
+      if (text && text !== currentText) {
+        currentText = text;
+        onTextUpdate?.(text, currentThinking);
+      }
+      const info = await requestOpenCode<{ time?: { idle?: number } }>(
+        conn.url,
+        `/session/${sessionId}`,
+        "GET",
+        undefined,
+        conn.authHeader,
+      );
+      if (info?.time?.idle) {
+        sseAbort.abort();
+        settle();
+        return;
+      }
+      // 上一轮还没收尾：`/wait` 会阻塞到服务端真正 idle，比自己猜 idle 准确。
+      // 超时 / 接口不存在时返回 false，交回事件流和上层超时兜底。
+      if (await waitSessionIdle(conn.url, conn.authHeader, sessionId)) {
+        sseAbort.abort();
+        settle();
+      }
+    } catch {
+      // 对账失败不改变主流程，等下一帧事件或超时兜底
+    }
+  };
+
+  // 权限请求是「服务端等人拍板」的阻塞状态：不 reply，这一轮就一直不结束。
+  // 事件流里没有稳定可用的 permission 事件名，按契约直接轮询 pending 列表。
+  const seenPermissions = new Set<string>();
+  let permissionTimer: ReturnType<typeof setInterval> | undefined;
+  const handlePermissions = async (): Promise<void> => {
+    const pending = await requestOpenCode<OpenCodePermissionRequest[]>(
+      conn.url,
+      `/session/${sessionId}/permission`,
+      "GET",
+      undefined,
+      conn.authHeader,
+    ).catch(() => null);
+    if (!Array.isArray(pending)) return;
+    for (const req of pending) {
+      if (!req?.id || seenPermissions.has(req.id)) continue;
+      if (signal?.aborted) return;
+      seenPermissions.add(req.id);
+      let decision: OpenCodePermissionDecision = "once";
+      try {
+        decision = (await options.onPermissionRequest?.(req)) || "once";
+      } catch {
+        decision = "reject";
+      }
+      await requestOpenCode<unknown>(
+        conn.url,
+        `/session/${sessionId}/permission/${req.id}/reply`,
+        "POST",
+        { decision },
+        conn.authHeader,
+      ).catch(() => {});
+    }
   };
 
   try {
@@ -514,14 +682,26 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
         sseError = err;
         settle();
       },
-      // 传 sessionId，客户端会用 requestUrl 轮询代替 SSE：
-      // 渲染进程 fetch 访问本地服务会被 CORS 拦（serve 默认不带 --cors）。
+      // sessionId = 开启「真 SSE + 断线重连 + 最后降级轮询」的完整通道链。
+      // 重连接通后会先对账，补齐断线期间丢掉的正文。
       sessionId,
+      reconcileAfterReconnect,
     );
 
     // 必须等 SSE 订阅建立后再发 prompt，否则会漏掉最早的事件
     // v2: prompt 正文是纯文本，agent/model 已在建会话时指定
-    await requestOpenCode(conn.url, `/session/${sessionId}/prompt`, "POST", { text: prompt }, conn.authHeader);
+    // 续用会话时只发这一轮的新增内容，历史由服务端保存，不再重发全文
+    const promptText = reused && options.incrementalPrompt ? options.incrementalPrompt : prompt;
+    await requestOpenCode(conn.url, `/session/${sessionId}/prompt`, "POST", { text: promptText }, conn.authHeader);
+    // prompt 发出去之后才开始盯权限：上一轮残留的请求不该再弹给用户
+    void handlePermissions();
+    permissionTimer = setInterval(() => void handlePermissions(), 1000);
+    if (!reused && options.onSessionBound) {
+      // prompt 已经进了服务端，之后才可以把它当长会话续用。
+      // 没有绑定回调的调用（设置页测试、后台委托）仍然按一次性会话处理。
+      bound = true;
+      options.onSessionBound(sessionId);
+    }
 
     // 超时定时器必须持有并在 race 结束后清掉：旧实现从不 clearTimeout，
     // 于是每问一次就多挂一个 5 分钟的活跃定时器。
@@ -573,10 +753,15 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
     }
     throw new Error(t("error.noAssistantReply"));
   } finally {
+    signal?.removeEventListener("abort", interruptOnAbort);
+    if (permissionTimer) clearInterval(permissionTimer);
     sseAbort.abort();
-    try {
-      await requestOpenCode(conn.url, `/session/${sessionId}`, "DELETE", undefined, conn.authHeader);
-    } catch {}
+    // 绑定的长会话要留给下一轮；只有一次性调用（设置页测试、后台委托）才删
+    if (!bound && !reused) {
+      try {
+        await requestOpenCode(conn.url, `/session/${sessionId}`, "DELETE", undefined, conn.authHeader);
+      } catch {}
+    }
   }
 }
 
@@ -655,6 +840,8 @@ export async function callAISession(options: CallAISessionOptions): Promise<stri
       if (err instanceof DOMException && err.name === "AbortError") throw err;
       if (signal?.aborted) throw err;
       console.warn("CLI 调用失败，降级到 API:", err);
+      // 丢掉缓存的连接，下次调用重新解析（服务可能重启 / 端口变了 / 密码变了）
+      invalidateOpenCodeConnection();
     }
   }
   const provider = getActiveProvider(settings);
