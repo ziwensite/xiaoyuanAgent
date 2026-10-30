@@ -403,23 +403,31 @@ export function connectSSE(
   // 结算，表现就是「点了停止没反应，一直转到超时」。
   signal.addEventListener("abort", () => onDone?.(), { once: true });
 
+  const fetchFallback = () => {
+    startSseFetchWithFallback(
+      base,
+      authHeader,
+      signal,
+      handleEvent,
+      onDone,
+      onError,
+      sessionId,
+      scheduleReconnect,
+    );
+  };
   const run = () => {
     reconnectTimer = undefined;
     if (stopped) return;
     openedAt = Date.now();
     // 轮询是最后一条通道，它能自己判断整轮结束；只有「真 SSE 出过事件后断流」
     // 才交回重连，避免把断线当完成、也避免和轮询互相打架。
+    //
+    // 注意降级顺序：Electron net 在 Obsidian 里很可能握手静默失败，这时不能直接
+    // 跳到 fetch（渲染进程会被 CORS 拦），也不能直接跳到轮询——原始 TCP 仍然可用，
+    // 而且逐字流式。所以 net 失败后先试 TCP，TCP 也不行才走 fetch / 轮询。
     const degraded = () => {
-      startSseFetchWithFallback(
-        base,
-        authHeader,
-        signal,
-        handleEvent,
-        onDone,
-        onError,
-        sessionId,
-        scheduleReconnect,
-      );
+      if (startSseRawSocket(base, authHeader, signal, handleEvent, scheduleReconnect, fetchFallback)) return;
+      fetchFallback();
     };
     if (startSseNet(base, authHeader, signal, handleEvent, scheduleReconnect, degraded)) return;
     if (startSseRawSocket(base, authHeader, signal, handleEvent, scheduleReconnect, degraded)) return;
@@ -487,6 +495,16 @@ function getElectronNet(): ElectronNetLike | null {
 }
 
 /**
+ * 通道可用性缓存。
+ *
+ * 某个环境里某条通道「握手成功但永远不来数据」是稳定特性（Electron net 就出现过），
+ * 每次都先等 3 秒超时再降级，用户每轮都要白等。只记「握手期一个事件都没收到」，
+ * 中途断流仍然照常重连。
+ */
+let netChannelBroken = false;
+let rawChannelBroken = false;
+
+/**
  * 用 Electron `net` 订阅事件流；返回 false 表示这个通道不可用（调用方应降级）。
  * 通道本身启动成功但中途失败、且一个事件都没收到时，同样交给调用方降级。
  */
@@ -499,16 +517,20 @@ function startSseNet(
   onUnusable: () => void,
 ): boolean {
   const net = getElectronNet();
-  if (!net) return false;
+  if (!net || netChannelBroken) return false;
 
   const url = joinUrl(base, "/event");
   let sawEvent = false;
   let closed = false;
   let req: ReturnType<ElectronNetLike["request"]> | null = null;
+  // 和原始 TCP 通道一样要有握手超时：Electron net 在部分环境里订阅成功却
+  // 永远不回调 response（静默挂住），既没事件也不报错，界面就变成「整段一起出现」。
+  let handshakeTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 
   const close = () => {
     if (closed) return;
     closed = true;
+    clearTimeout(handshakeTimer);
     try {
       req?.abort();
     } catch {
@@ -544,7 +566,11 @@ function startSseNet(
         try {
           const evt = JSON.parse(payload) as OpenCodeEvent;
           if (evt && typeof evt.type === "string") {
-            sawEvent = true;
+            if (!sawEvent) {
+              sawEvent = true;
+              clearTimeout(handshakeTimer);
+              console.info(`[xiaoyuanAgent] Electron net 通道收到首个事件：${evt.type}`);
+            }
             onEvent(evt);
           }
         } catch {
@@ -567,6 +593,13 @@ function startSseNet(
     onUnusable();
   });
   req.end();
+  handshakeTimer = setTimeout(() => {
+    if (sawEvent || closed) return;
+    console.info("[xiaoyuanAgent] Electron net 通道未收到任何事件，判定不可用，降级");
+    netChannelBroken = true;
+    close();
+    onUnusable();
+  }, SSE_HANDSHAKE_TIMEOUT_MS);
   console.info("[xiaoyuanAgent] 事件流通道：Electron net（不受 CORS 限制，逐字流式）");
   return true;
 }
@@ -608,7 +641,7 @@ function startSseRawSocket(
   onUnusable: () => void,
 ): boolean {
   const nodeNet = getNodeNet();
-  if (!nodeNet) return false;
+  if (!nodeNet || rawChannelBroken) return false;
 
   let target: { host: string; port: number; path: string };
   try {
@@ -644,7 +677,15 @@ function startSseRawSocket(
 
   let headDone = false;
   let chunked = false;
-  let pending = "";
+  /**
+   * chunked 的分块大小是**字节数**，缓冲必须按字节保存。
+   *
+   * 之前把数据包解码成字符串再按字符下标切片，播到一半会卡死：事件体里的
+   * `location.directory` 带中文路径（如 `E:\我的资料库\...`），UTF-8 多字节字符让
+   * 「字符偏移」和「字节偏移」越差越多，切出来的块边界全错，解析在第一个事件后
+   * 就再也吐不出帧——界面上表现为「先出一点内容，然后整段在结尾一次性出现」。
+   */
+  let pending: Buffer = Buffer.alloc(0);
   let sseBuffer = "";
 
   const feed = (text: string) => {
@@ -666,12 +707,12 @@ function startSseRawSocket(
     });
   };
 
-  /** chunked 编码：`<hex-size>\r\n<data>\r\n`，0 长度块表示结束 */
+  /** chunked 编码：`<hex-size>\r\n<data>\r\n`，0 长度块表示结束（长度按字节算） */
   const drainChunks = () => {
     for (;;) {
       const lf = pending.indexOf("\r\n");
       if (lf < 0) return;
-      const sizeLine = pending.slice(0, lf).trim();
+      const sizeLine = pending.subarray(0, lf).toString("utf8").trim();
       const size = parseInt(sizeLine, 16);
       if (!Number.isFinite(size)) return;
       const start = lf + 2;
@@ -682,8 +723,8 @@ function startSseRawSocket(
         onDone?.();
         return;
       }
-      feed(pending.slice(start, start + size));
-      pending = pending.slice(start + size + 2);
+      feed(pending.subarray(start, start + size).toString("utf8"));
+      pending = pending.subarray(start + size + 2);
     }
   };
 
@@ -694,13 +735,13 @@ function startSseRawSocket(
   }
 
   socket.on("data", (arg?: unknown) => {
-    const chunk = typeof arg === "string" ? arg : Buffer.from(arg as Uint8Array).toString("utf8");
-    pending += chunk;
+    const chunk = typeof arg === "string" ? Buffer.from(arg, "utf8") : Buffer.from(arg as Uint8Array);
+    pending = pending.length ? Buffer.concat([pending, chunk]) : chunk;
     if (!headDone) {
       const sep = pending.indexOf("\r\n\r\n");
       if (sep < 0) return;
-      const head = pending.slice(0, sep);
-      pending = pending.slice(sep + 4);
+      const head = pending.subarray(0, sep).toString("utf8");
+      pending = pending.subarray(sep + 4);
       headDone = true;
       chunked = /transfer-encoding:\s*chunked/i.test(head);
       // 401 说明密码不对，别赖在这条通道上
@@ -714,8 +755,8 @@ function startSseRawSocket(
       drainChunks();
       return;
     }
-    feed(pending);
-    pending = "";
+    feed(pending.toString("utf8"));
+    pending = Buffer.alloc(0);
   });
   socket.on("error", () => {
     if (sawEvent) {
@@ -747,6 +788,7 @@ function startSseRawSocket(
   handshakeTimer = setTimeout(() => {
     if (sawEvent || closed) return;
     console.info("[xiaoyuanAgent] 原始 TCP 通道未收到任何事件，判定不可用，降级");
+    rawChannelBroken = true;
     close();
     onUnusable();
   }, SSE_HANDSHAKE_TIMEOUT_MS);

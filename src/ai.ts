@@ -317,6 +317,27 @@ function extractAssistantText(messages: V2AssistantMessage[] | undefined): strin
 }
 
 /**
+ * 取本轮的推理过程。
+ *
+ * OpenCode 2.1.4 只发 `session.usage.updated` 里的 reasoning token 数，
+ * 不发 `session.reasoning.delta`，所以运行时拿不到增量，只能取最终消息里的
+ * `reasoning` 分块；用户看到的是「思考结束后展开的折叠块」。
+ */
+function extractAssistantThinking(messages: V2AssistantMessage[] | undefined): string {
+  if (!Array.isArray(messages)) return "";
+  const parts: string[] = [];
+  for (const m of messages) {
+    if (m?.type !== "assistant") continue;
+    const text = (m.content || [])
+      .filter((c) => c?.type === "reasoning" && typeof c.text === "string")
+      .map((c) => c.text as string)
+      .join("");
+    if (text) parts.push(text);
+  }
+  return parts.join("\n\n");
+}
+
+/**
  * 只保留本轮的消息。
  *
  * `/message` 是**最新在前**的顺序（实测 `idle/assistant/user/synthetic` 依次递减），
@@ -787,6 +808,15 @@ export async function callAIWithHTTPStreaming(options: HttpStreamOptions): Promi
     // 只取本轮消息：续用会话时历史回复不能混进这一轮的结果
     const roundMessages = currentRoundMessages(messages);
     const result = extractAssistantText(roundMessages);
+    // 2.1.4 不会把推理过程作为事件流出来（只有 token 计数），
+    // 思考正文只存在于消息体的 reasoning 分块里，只能在一轮结束时补上
+    if (!currentThinking) {
+      const serverThinking = extractAssistantThinking(roundMessages);
+      if (serverThinking) {
+        currentThinking = serverThinking;
+        onThinking?.(serverThinking);
+      }
+    }
     const snapshots = await Promise.all([...writeSnapshots.values()]).catch(() => [] as WriteSnapshot[]);
     if (result) {
       onTextUpdate?.(result, currentThinking);
