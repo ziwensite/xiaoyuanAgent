@@ -70,7 +70,6 @@ export function buildModelList(
       return;
     }
     for (const [provider, items] of groupByProvider(models)) {
-      body.createDiv({ cls: "xyag-popup-separator" });
       // 分组默认收起（只看 provider 名，点开才展开模型），展开时会自动重排
       const children = addPopupSection(body, provider, { collapsed: true });
       for (const m of items) {
@@ -126,17 +125,18 @@ export function buildModelList(
     const active = getActiveProvider(settings);
     let hasItem = false;
     for (const p of settings.apiProviders) {
-      // 一个提供商下可能有多个模型，每个模型一行；选中即切换 provider + 当前模型
+      // 一个提供商下可能有多个模型：按提供商再分一层折叠组，与 OpenCode 区结构一致
       const models = (p.models?.length ? p.models : p.model ? [p.model] : []).slice().sort((a, b) => a.localeCompare(b));
+      if (models.length === 0) continue;
+      hasItem = true;
+      const children = addPopupSection(apiBody, p.name || t("model.otherProvider"), { collapsed: true });
       for (const model of models) {
-        hasItem = true;
-        const label = p.name ? `${p.name}: ${model}` : model;
-        addPopupItem(apiBody, label, p.id === active?.id && model === p.model, () => {
+        addPopupItem(children, model, p.id === active?.id && model === p.model, () => {
           settings.activeApiProviderId = p.id;
           p.model = model;
           options.persist();
-          options.onSelectApi?.(label);
-        });
+          options.onSelectApi?.(p.name ? `${p.name}: ${model}` : model);
+        }, "option");
       }
     }
     if (!hasItem) {

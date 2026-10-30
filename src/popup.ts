@@ -696,6 +696,10 @@ export function addPopupSection(
   options?: { collapsed?: boolean },
 ): HTMLElement {
   const title = popup.createDiv({ cls: "xyag-popup-group-title" });
+  // 嵌套在别的分组里的算子组（如「API」大类下的各提供商），样式上降一级
+  if (popup.classList.contains("xyag-popup-group-children")) {
+    title.classList.add("xyag-popup-subgroup");
+  }
   const arrow = title.createSpan({ cls: "xyag-popup-arrow" });
   const body = popup.createDiv({ cls: "xyag-popup-group-children" });
   const collapsed = options?.collapsed === true;

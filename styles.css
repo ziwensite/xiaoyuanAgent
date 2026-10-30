@@ -1090,6 +1090,29 @@ pre:hover .xyag-copy-btn {
   font-weight: 600;
 }
 
+/* 大分类（OpenCode / API）：加粗，与子分组区分 */
+.xyag-popup > .xyag-popup-group-title {
+  color: var(--text-normal);
+}
+
+/* 子分组（provider）：缩进 + 弱化，与大分类拉开层级 */
+.xyag-popup-group-title.xyag-popup-subgroup {
+  font-weight: 500;
+  font-size: calc(var(--font-ui-small, 13px) * 0.95);
+  color: var(--text-muted);
+  padding-left: 20px;
+}
+
+/* 子分组里的模型项再缩进一层 */
+.xyag-popup-group-children .xyag-popup-group-children .xyag-popup-item {
+  padding-left: 34px;
+}
+
+/* 大分类直接下的项（没有子分组时）也缩进 */
+.xyag-popup-group-children > .xyag-popup-item {
+  padding-left: 22px;
+}
+
 .xyag-popup-group-title:hover {
   background: var(--menu-item-hover-bg, var(--background-modifier-hover));
 }
