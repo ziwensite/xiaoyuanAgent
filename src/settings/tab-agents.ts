@@ -1,6 +1,6 @@
 import type { SettingsCtx } from "./context";
 import { ConfirmModal } from "./widgets";
-import { canRemoveAgent, createAgent, ensureDefaultAgent, getAgentDisplayName, getDefaultAgent, isAgentNameTaken, listAgents, setDefaultAgent } from "../agent-registry";
+import { canRemoveAgent, createAgent, defaultCapabilityFor, defaultPromptFor, ensureDefaultAgent, getAgentDisplayName, getDefaultAgent, isAgentNameTaken, listAgents, setDefaultAgent } from "../agent-registry";
 import { AGENT_AVATARS } from "../constants";
 import { t } from "../i18n";
 import { createSelectField } from "../select-list";
@@ -190,14 +190,38 @@ updateHeader();
   });
   modelField.createDiv({ cls: "xyag-field-hint", text: t("setting.agents.model.desc") });
 
+  // 能力简介（一句话，注入群聊名单供其它 Agent 判断委托对象）
+  const capField = content.createDiv({ cls: "xyag-api-provider-field" });
+  capField.createSpan({ cls: "xyag-api-provider-label", text: t("setting.agents.capability") });
+  const capInput = capField.createEl("input", {
+    cls: "xyag-api-provider-input",
+    attr: { placeholder: t("setting.agents.capability.hint") },
+  });
+  capInput.value = agent.capability || "";
+  capInput.addEventListener("change", async () => {
+    agent.capability = capInput.value.trim() || undefined;
+    await ctx.plugin.saveSettings();
+  });
+  capField.createDiv({ cls: "xyag-field-hint", text: t("setting.agents.capability.desc") });
+
   // 系统提示词
   const promptField = content.createDiv({ cls: "xyag-api-provider-field" });
-  promptField.createSpan({ cls: "xyag-api-provider-label", text: t("setting.agents.prompt") });
+  const promptLabel = promptField.createSpan({ cls: "xyag-api-provider-label", text: t("setting.agents.prompt") });
+  // 恢复默认：提示词和能力简介一起重置为当前语言的出厂文案
+  const resetBtn = promptLabel.createEl("button", { cls: "xyag-agent-reset-btn", text: t("setting.agents.resetDefault") });
   const promptArea = promptField.createEl("textarea", { cls: "xyag-api-provider-input", attr: { rows: "4" } });
   promptArea.value = agent.systemPrompt;
   promptArea.addEventListener("change", async () => {
     agent.systemPrompt = promptArea.value;
     await ctx.plugin.saveSettings();
+  });
+  resetBtn.addEventListener("click", async () => {
+    agent.systemPrompt = defaultPromptFor(agent);
+    agent.capability = defaultCapabilityFor(agent);
+    promptArea.value = agent.systemPrompt;
+    capInput.value = agent.capability || "";
+    await ctx.plugin.saveSettings();
+    new Notice(t("setting.agents.resetDone"));
   });
 }
 

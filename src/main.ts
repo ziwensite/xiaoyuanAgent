@@ -30,7 +30,7 @@ import { getVaultBasePath, setVaultBasePath } from "./server";
 import { statusStore } from "./settings/status-store";
 import { showSelectionPopup } from "./selection-popup";
 import { SpeakController } from "./speak-controller";
-import { ensureDefaultAgent, getAgentDisplayName } from "./agent-registry";
+import { defaultCapabilityFor, defaultPromptFor, ensureDefaultAgent, getAgentDisplayName } from "./agent-registry";
 import { closePopup } from "./popup";
 import { formatTime } from "./utils";
 import { writeBuildStamp, initDebugLog } from "./debug-log";
@@ -479,10 +479,10 @@ export default class XiaoyuanAgentPlugin extends Plugin {
         this.settings.agents.push({ ...def });
       }
     }
-    // 内置 Agent 的系统提示词跟随 i18n 语言补全
+    // 内置 Agent 的系统提示词/能力简介跟随 i18n 语言补全
     for (const agent of this.settings.agents) {
-      if (agent.id === BUILTIN_AGENT_A_ID && !agent.systemPrompt) agent.systemPrompt = t("agent.defaultPromptA");
-      if (agent.id === BUILTIN_AGENT_C_ID && !agent.systemPrompt) agent.systemPrompt = t("agent.defaultPromptC");
+      if (!agent.systemPrompt) agent.systemPrompt = defaultPromptFor(agent);
+      if (!agent.capability) agent.capability = defaultCapabilityFor(agent);
       if (!agent.avatar) agent.avatar = "bot";
       if (agent.enabled === undefined) agent.enabled = true;
     }

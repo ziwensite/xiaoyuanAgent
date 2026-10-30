@@ -5,7 +5,7 @@ import type { AgentConfig, FileDiff } from "../types";
 import { CONTEXT_SNIPPET_MAX, DELEGATION_TIMEOUT_MS, getActiveProvider } from "../constants";
 import { callAIWithHTTPStreaming, callAISession, getVaultBasePath } from "../ai";
 import { combineAbort } from "../api-client";
-import { buildAgentMessages, extractAgentDelegations, resolveAgentTarget } from "../agent-registry";
+import { buildAgentMessages, buildAgentRoster, extractAgentDelegations, resolveAgentTarget } from "../agent-registry";
 import { t } from "../i18n";
 import { askPermission } from "../modals";
 import {
@@ -173,7 +173,7 @@ export async function callAI(
   // 刚重置过上下文：这一轮只重建「系统提示 + 本轮问题」，不回放历史
   const resetPending = !!s.opencodeContextReset?.[scope];
   const historyForPrompt = resetPending ? [] : lastIsUser ? ctx.messages.slice(0, -1) : ctx.messages;
-  const prompt = buildAgentMessages(historyForPrompt, systemPrompt, enrichedMessage, source);
+  const prompt = buildAgentMessages(historyForPrompt, systemPrompt, enrichedMessage, source, buildAgentRoster(s));
 
   const rememberBinding = (id: string) => {
     // 旧绑定可能已在服务端失效（被删/换库），此时会新建一条，绑定必须跟着更新
@@ -302,7 +302,7 @@ export function runBackgroundDelegation(ctx: ChatCtx, agent: AgentConfig, task: 
 /** 独立的后台调用：不依赖 streaming 状态机，直接拿最终文本。 */
 export async function callAIForAgent(ctx: ChatCtx, agent: AgentConfig, task: string): Promise<string> {
   const s = ctx.plugin.settings;
-  const prompt = buildAgentMessages([], agent.systemPrompt || s.systemPrompt, task, agent.name);
+  const prompt = buildAgentMessages([], agent.systemPrompt || s.systemPrompt, task, agent.name, buildAgentRoster(s));
   const signal = combineAbort(undefined, DELEGATION_TIMEOUT_MS);
   if (agent.channel === "cli") {
     return callAIWithHTTPStreaming({ prompt, settings: s, vaultDir: getVaultBasePath(), signal, agent });

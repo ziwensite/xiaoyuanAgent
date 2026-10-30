@@ -33,6 +33,20 @@ export function getAgentForChannel(s: WithAgents, channel: AgentChannel): AgentC
   return pool.find((a) => a.builtin) ?? pool[0];
 }
 
+/** Agent 的默认系统提示词（按当前语言）：内置 A/C 各有专属，其余用通用模板 */
+export function defaultPromptFor(agent: AgentConfig): string {
+  if (agent.id === BUILTIN_AGENT_A_ID) return t("agent.defaultPromptA");
+  if (agent.id === BUILTIN_AGENT_C_ID) return t("agent.defaultPromptC");
+  return t("agent.defaultPromptNew", agent.name);
+}
+
+/** Agent 的默认能力简介：仅内置 A/C 有预填，其余留空由用户补 */
+export function defaultCapabilityFor(agent: AgentConfig): string | undefined {
+  if (agent.id === BUILTIN_AGENT_A_ID) return t("agent.capabilityA");
+  if (agent.id === BUILTIN_AGENT_C_ID) return t("agent.capabilityC");
+  return undefined;
+}
+
 /** 保证有且仅有一个 isDefault；并同步 execMode 与默认 Agent 的通道。 */
 export function ensureDefaultAgent(s: WithAgents): void {
   const enabled = s.agents.filter((a) => a.enabled);
@@ -40,9 +54,9 @@ export function ensureDefaultAgent(s: WithAgents): void {
   // 内置 Agent 的 systemPrompt 在 constants 里故意留空、由 loadSettings 按当前语言填充。
   // 若有人直接用 DEFAULT_SETTINGS 而没走迁移，这里兜一层，避免把空提示词发出去。
   for (const a of s.agents) {
-    if (!a.builtin || a.systemPrompt) continue;
-    if (a.id === BUILTIN_AGENT_A_ID) a.systemPrompt = t("agent.defaultPromptA");
-    else if (a.id === BUILTIN_AGENT_C_ID) a.systemPrompt = t("agent.defaultPromptC");
+    if (!a.builtin) continue;
+    if (!a.systemPrompt) a.systemPrompt = defaultPromptFor(a);
+    if (!a.capability) a.capability = defaultCapabilityFor(a);
   }
   if (enabled.length === 0) {
     // 至少保留一个启用的 Agent
@@ -95,6 +109,7 @@ export function createAgent(s: WithAgents, partial: Partial<AgentConfig> = {}): 
     avatar: partial.avatar ?? "bot",
     channel: partial.channel ?? fallbackChannel,
     systemPrompt: partial.systemPrompt ?? t("agent.defaultPromptNew", name),
+    capability: partial.capability,
     enabled: partial.enabled ?? true,
     model: partial.model,
     isDefault: partial.isDefault ?? false,
@@ -176,6 +191,26 @@ export function extractAgentDelegations(
 }
 
 /**
+ * 实时群聊名单：名字 + 通道属性 + CLI 当前模式 + 能力简介。
+ *
+ * 提示词里只写「我是谁 + 委托规则」，其它成员的能力全部靠这段动态注入——
+ * 新建 Agent、改名、切模式，下一轮自动生效，不用手工同步文案。
+ */
+export function buildAgentRoster(s: WithAgents & { opencode?: { agent?: string } }): string {
+  const agents = listAgents(s);
+  if (agents.length === 0) return "";
+  const lines = agents.map((a) => {
+    const facts = [`${a.channel} 通道`];
+    if (a.channel === "api") facts.push(t("agent.roster.channel.api"));
+    else if (s.opencode?.agent) facts.push(t("agent.roster.mode", s.opencode.agent));
+    let line = `- ${a.name}（${facts.join("，")}）`;
+    if (a.capability) line += `：${a.capability}`;
+    return line;
+  });
+  return `\n\n[${t("agent.roster.title")}]\n${lines.join("\n")}`;
+}
+
+/**
  * 拼装多轮消息为单条 prompt（含「当前助手」标识）。
  * 会话为群聊语义，全部消息均纳入上下文（见 DESIGN.md 5.10.5）。
  */
@@ -184,10 +219,11 @@ export function buildAgentMessages(
   systemPrompt: string,
   userContent: string,
   source: string,
+  roster = "",
 ): string {
   const modeIdentity = `\n\n当前助手: ${source}`;
   const allMessages = [
-    { role: "system" as const, content: systemPrompt + modeIdentity },
+    { role: "system" as const, content: systemPrompt + modeIdentity + roster },
     ...messages.map((m) => ({ role: m.role, content: m.content })),
     { role: "user" as const, content: userContent },
   ];

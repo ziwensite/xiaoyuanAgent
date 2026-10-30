@@ -1442,6 +1442,25 @@ pre:hover .xyag-copy-btn {
   font-weight: 600;
 }
 
+/* Agent 提示词标签右侧的「恢复默认」小按钮 */
+.xyag-agent-reset-btn {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 400;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.xyag-agent-reset-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 /* 自绘下拉框：仿 Obsidian 原生 select 的观感 */
 .xyag-select {
   display: inline-flex;

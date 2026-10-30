@@ -11,6 +11,8 @@ export interface AgentConfig {
   channel: AgentChannel;
   /** 系统提示词 */
   systemPrompt: string;
+  /** 能力简介（一句话，注入群聊名单供其它 Agent 判断委托对象；可空） */
+  capability?: string;
   /** 是否启用（停用后不参与路由与列表） */
   enabled: boolean;
   /** 覆盖通道默认模型（留空 = 沿用通道默认） */
