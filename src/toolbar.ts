@@ -19,6 +19,34 @@ import {
   toReasoningPreset,
 } from "./reasoning";
 import type XiaoyuanAgentPlugin from "./main";
+import { getVaultBasePath, setWorkspacePath } from "./server";
+import { invalidateOpenCodeConnection, stopOpenCodeServer } from "./opencode-server";
+
+/** Electron remote.dialog 的最小声明（和 opencode-client 里 net 的做法一样，不为类型依赖 electron 包） */
+interface ElectronRemoteLike {
+  dialog?: {
+    showOpenDialog(options: {
+      properties: string[];
+    }): Promise<{ canceled: boolean; filePaths: string[] }>;
+  };
+}
+
+/**
+ * 弹系统目录选择框（Electron 原生目录对话框，Obsidian 主进程开了 @electron/remote）。
+ */
+function pickDirectory(onPick: (dir: string) => void): void {
+  void (async () => {
+    try {
+      const dialog = (require("electron") as { remote?: ElectronRemoteLike } | undefined)?.remote?.dialog;
+      if (!dialog) throw new Error("remote dialog unavailable");
+      const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
+      const dir = result.filePaths[0];
+      if (!result.canceled && dir) onPick(dir);
+    } catch {
+      new Notice(t("notice.workspacePickFailed"));
+    }
+  })();
+}
 
 interface ToolbarHost {
   plugin: XiaoyuanAgentPlugin;
@@ -50,7 +78,7 @@ function describeContext(st: ContextStatus | null): string {
 }
 
 /**
- * 上下文状态 + 重置按钮。
+ * 上下文状态 chip（用量百分比 / 消息数），点击弹层里有压缩和重置。
  *
  * 挂在输入框上方的工具条（`.xyag-wiki-bar` 右侧），不占用下方发送栏。
  * 只有 CLI 通道才有长会话上下文，API 通道直接不渲染。
@@ -95,7 +123,6 @@ export function buildContextControls(view: ToolbarHost, host: HTMLElement): void
         render(st);
         const info = body.createDiv({ cls: "xyag-context-info" });
         info.setText(describeContext(st));
-        addPopupSection(body, t("chat.context.title"));
         addPopupItem(body, t("chat.context.compress"), false, () => {
           void (async () => {
             const ok = await compactContext(view.plugin, scope).catch(() => false);
@@ -109,9 +136,18 @@ export function buildContextControls(view: ToolbarHost, host: HTMLElement): void
             window.setTimeout(() => void refresh(), 9000);
           })();
         });
+        // 重置：从进度弹层里进，不再单独占一个工具栏按钮
+        addPopupItem(body, t("chat.context.reset"), false, () => {
+          new ConfirmModal(view.plugin.app, t("chat.context.resetConfirm"), async () => {
+            await resetContext(view.plugin, scope);
+            render(null);
+            new Notice(t("notice.contextReset"));
+          });
+        });
       },
       {
-        direction: "auto",
+        // 输入框上方的 chip：菜单向上弹，别盖住输入框
+        direction: "up",
         minWidth: 220,
         onClose: () => chip.classList.remove("is-open"),
       },
@@ -119,20 +155,67 @@ export function buildContextControls(view: ToolbarHost, host: HTMLElement): void
     if (popup) chip.addClass("is-open");
   });
 
-  // 重置上下文：独立按钮，和状态并排，复用上方工具条的图标按钮样式
-  const resetBtn = host.createSpan({ cls: "xyag-wiki-btn" });
-  setIcon(resetBtn, "rotate-ccw");
-  setTooltip(resetBtn, t("chat.context.reset"));
-  resetBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    new ConfirmModal(view.plugin.app, t("chat.context.resetConfirm"), async () => {
-      await resetContext(view.plugin, scope);
-      render(null);
-      new Notice(t("notice.contextReset"));
-    });
-  });
-
   void refresh();
+}
+
+/**
+ * 工作区切换 chip：挂在聊天头部最左侧。
+ *
+ * 工作区 = AI（CLI 通道）实际操作的目录，默认库根目录。
+ * 切换时清会话绑定（旧会话属于旧目录）并停掉 OpenCode 服务，
+ * 让它下条消息用新目录重启。
+ */
+export function buildWorkspaceChip(view: ToolbarHost, host: HTMLElement): void {
+  const wsChip = host.createSpan({ cls: "xyag-level-select xyag-workspace-chip" });
+  const wsLabel = () => {
+    const p = view.plugin.settings.workspacePath?.trim();
+    if (!p) return t("chat.workspace.default");
+    return p.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() || p;
+  };
+  const refresh = () => {
+    const custom = !!view.plugin.settings.workspacePath?.trim();
+    wsChip.textContent = wsLabel();
+    wsChip.classList.toggle("is-active", custom);
+    setTooltip(wsChip, view.plugin.settings.workspacePath || getVaultBasePath());
+  };
+  refresh();
+
+  const switchWorkspace = async (dir: string) => {
+    const settings = view.plugin.settings;
+    settings.workspacePath = dir;
+    if (dir) {
+      const rest = (settings.recentWorkspaces || []).filter((p) => p !== dir);
+      settings.recentWorkspaces = [dir, ...rest].slice(0, 5);
+    }
+    setWorkspacePath(dir);
+    settings.opencodeSessionBindings = {};
+    await view.plugin.saveSettings();
+    try {
+      stopOpenCodeServer();
+      invalidateOpenCodeConnection();
+    } catch {}
+    refresh();
+    new Notice(t("chat.workspace.switched", dir || t("chat.workspace.default")));
+  };
+
+  wsChip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showPopup(
+      wsChip,
+      (popup) => {
+        const cur = view.plugin.settings.workspacePath?.trim() || "";
+        addPopupItem(popup, t("chat.workspace.default"), !cur, () => void switchWorkspace(""));
+        for (const p of view.plugin.settings.recentWorkspaces || []) {
+          addPopupItem(popup, p, p === cur, () => void switchWorkspace(p));
+        }
+        popup.createDiv({ cls: "xyag-popup-separator" });
+        addPopupItem(popup, t("chat.workspace.browse"), false, () => {
+          pickDirectory((dir) => void switchWorkspace(dir));
+        });
+      },
+      { direction: "auto", minWidth: 220 },
+    );
+  });
 }
 
 export function buildToolbarContent(container: HTMLElement, view: ToolbarHost): HTMLSpanElement {

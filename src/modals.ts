@@ -1,7 +1,7 @@
-import { App, FuzzySuggestModal, Menu, Modal, Notice, TFolder } from "obsidian";
+﻿import { App, FuzzySuggestModal, Menu, Modal, Notice, TFolder } from "obsidian";
 import { t } from "./i18n";
 import type XiaoyuanAgentPlugin from "./main";
-import { callAISession, getVaultBasePath } from "./ai";
+import { callAISession, getWorkspaceDir } from "./ai";
 import { VIEW_TYPE_XIAOYUAN_AGENT_CHAT } from "./constants";
 import { getDefaultAgent } from "./agent-registry";
 import type { PromptTemplate, OpenCodePermissionRequest, OpenCodePermissionDecision } from "./types";
@@ -187,7 +187,7 @@ export class TextOperationModal extends Modal {
       const result = await callAISession({
         prompt: (tpl.prompt || "") + text,
         settings: s,
-        vaultDir: getVaultBasePath(),
+        vaultDir: getWorkspaceDir(),
         agent,
         // prompt 是模板原文，系统提示词没嵌在里面，得单独注入
         systemPrompt: agent?.systemPrompt,

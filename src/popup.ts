@@ -273,7 +273,8 @@ function positionPopup(popup: HTMLElement, trigger: HTMLElement, options?: Popup
   popup.style.overflowY = "auto";
   const naturalHeight = popup.offsetHeight;
 
-  const capPx = parseMaxHeight(options?.maxHeight, vh);
+  // 所有弹层统一默认上限 50vh（调用方可用 options.maxHeight 覆盖）
+  const capPx = parseMaxHeight(options?.maxHeight ?? "50vh", vh);
   const spaceBelow = Math.max(0, bounds.bottom - rect.bottom - TRIGGER_GAP);
   const spaceAbove = Math.max(0, rect.top - TRIGGER_GAP - bounds.top);
   const below = Math.min(spaceBelow, capPx);
@@ -293,12 +294,13 @@ function positionPopup(popup: HTMLElement, trigger: HTMLElement, options?: Popup
     dir = preferred >= naturalHeight || preferred >= other ? pref : pref === "down" ? "up" : "down";
   }
 
-  // 高度上限 = 可用空间与内容高度里小的那个。
+  // 高度上限 = 可用空间 ∩ 统一上限。
   // 关键：弹层是 border-box（见 styles.css），max-height 就是总高度，
   // 因此这里算出的高度一定装得进可用空间，不会溢出、也就不会被推离触发器。
+  // 注意别往 naturalHeight 上夹：offsetHeight 取整会丢零头（内容高 90.4px
+  // 量出来是 90），夹了就会出现「内容不多却冒出滚动条」。上限比内容大没有副作用。
   const avail = dir === "down" ? spaceBelow : spaceAbove;
-  const wanted = Math.min(naturalHeight, Math.max(capPx, MIN_POPUP_HEIGHT));
-  const maxHeightPx = Math.max(0, Math.min(avail, wanted));
+  const maxHeightPx = Math.max(0, Math.min(avail, Math.max(capPx, MIN_POPUP_HEIGHT)));
   popup.style.maxHeight = `${Math.round(maxHeightPx)}px`;
 
   // ── 水平位置：左边缘对齐触发器，越界整体回收 ─────────────────────

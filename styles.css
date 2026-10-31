@@ -99,7 +99,7 @@
   align-items: center;
   gap: 5px;
   max-width: 160px;
-  padding: 3px 8px;
+  padding: 3px 8px 3px 18px;
   border-radius: 4px;
   background-color: var(--background-secondary);
   color: var(--text-normal);
@@ -109,11 +109,16 @@
   overflow: hidden;
 }
 
-.xyag-agent-selector::after {
+/* 下拉箭头放左边，和模型 / 思考强度等下拉触发器统一 */
+.xyag-agent-selector::before {
   content: "▼";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  transform: translateY(-50%);
   font-size: 0.6em;
   color: var(--text-muted);
-  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .xyag-agent-selector:hover {
@@ -243,6 +248,20 @@
 
 .xyag-session-group-head:hover {
   background-color: var(--background-modifier-hover);
+}
+
+/* 分组下第一行的「＋ 新建」入口 */
+.xyag-session-new-item {
+  color: var(--text-muted);
+}
+
+.xyag-session-new-item .xyag-popup-check {
+  color: var(--text-muted);
+}
+
+.xyag-session-new-item .xyag-popup-check svg {
+  width: 12px;
+  height: 12px;
 }
 
 .xyag-session-group-arrow {
@@ -1013,6 +1032,16 @@ pre:hover .xyag-copy-btn {
 .xyag-level-select:hover {
   color: var(--text-normal);
   background-color: var(--background-modifier-hover);
+}
+
+/* 工作区 chip：指向库外目录时点亮，提醒 AI 当前操作的不是本库 */
+.xyag-workspace-chip {
+  max-width: 140px;
+}
+
+.xyag-workspace-chip.is-active {
+  color: var(--text-accent);
+  font-weight: 500;
 }
 
 .xyag-status-dot {

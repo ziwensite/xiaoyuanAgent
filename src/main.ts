@@ -26,7 +26,7 @@ import {
   cleanupOrphanedOpenCodeServers,
 } from "./opencode-server";
 import { readServiceRegistration } from "./opencode-client";
-import { getVaultBasePath, setVaultBasePath } from "./server";
+import { getVaultBasePath, setVaultBasePath, setWorkspacePath } from "./server";
 import { statusStore } from "./settings/status-store";
 import { showSelectionPopup } from "./selection-popup";
 import { SpeakController } from "./speak-controller";
@@ -182,6 +182,8 @@ export default class XiaoyuanAgentPlugin extends Plugin {
 
     const adapter = this.app.vault.adapter as { getBasePath?: () => string };
     if (adapter.getBasePath) setVaultBasePath(adapter.getBasePath());
+    // 恢复上次的工作区目录（空 = 库根目录）
+    setWorkspacePath(this.settings.workspacePath || "");
 
     // 启动即探测一次连接/版本状态并存入状态仓储；设置面板打开时直接读快照，
     // 不再在 display() 里重复探测。CLI 连接还会随 OpenCode 服务启停事件自动更新。

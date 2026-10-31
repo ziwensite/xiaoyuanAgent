@@ -1,11 +1,11 @@
-import type { SettingsCtx } from "./context";
+﻿import type { SettingsCtx } from "./context";
 import { clampPort } from "./widgets";
 import { t } from "../i18n";
 import { attachModelPicker, shortModelName } from "../model-picker";
 import { createSelectTrigger } from "../model-select";
 import { CLI_REASONING_OPTIONS, reasoningPresetLabel, toReasoningPreset } from "../reasoning";
 import { createSelectField } from "../select-list";
-import { getVaultBasePath } from "../server";
+import { getWorkspaceDir } from "../server";
 import { PermissionMode } from "../types";
 import { Notice, Setting } from "obsidian";
 
@@ -67,7 +67,7 @@ ensureOpenCodeServer(
               s.opencode.cliPath,
               s.opencode.hostname,
               s.opencode.port,
-getVaultBasePath(),
+getWorkspaceDir(),
               true,
             )
               .then(() => ctx.notifyChatViewsOpenCode())

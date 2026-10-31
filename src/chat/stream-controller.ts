@@ -1,9 +1,9 @@
-import { Notice } from "obsidian";
+﻿import { Notice } from "obsidian";
 import type XiaoyuanAgentPlugin from "../main";
 import type { ChatCtx } from "./context";
 import type { AgentConfig, FileDiff } from "../types";
 import { CONTEXT_SNIPPET_MAX, DELEGATION_TIMEOUT_MS, getActiveProvider } from "../constants";
-import { callAIWithHTTPStreaming, callAISession, getVaultBasePath } from "../ai";
+import { callAIWithHTTPStreaming, callAISession, getWorkspaceDir } from "../ai";
 import { combineAbort } from "../api-client";
 import { buildAgentMessages, buildAgentRoster, extractAgentDelegations, resolveAgentTarget } from "../agent-registry";
 import { t } from "../i18n";
@@ -213,7 +213,7 @@ export async function callAI(
         ? await callAIWithHTTPStreaming({
             prompt,
             settings: s,
-            vaultDir: getVaultBasePath(),
+            vaultDir: getWorkspaceDir(),
             signal,
             onThinking: updateThinking,
             onTextUpdate: updateText,
@@ -229,7 +229,7 @@ export async function callAI(
         : await callAISession({
             prompt,
             settings: s,
-            vaultDir: getVaultBasePath(),
+            vaultDir: getWorkspaceDir(),
             signal,
             skipCli,
             agent: target,
@@ -305,12 +305,12 @@ export async function callAIForAgent(ctx: ChatCtx, agent: AgentConfig, task: str
   const prompt = buildAgentMessages([], agent.systemPrompt || s.systemPrompt, task, agent.name, buildAgentRoster(s));
   const signal = combineAbort(undefined, DELEGATION_TIMEOUT_MS);
   if (agent.channel === "cli") {
-    return callAIWithHTTPStreaming({ prompt, settings: s, vaultDir: getVaultBasePath(), signal, agent });
+    return callAIWithHTTPStreaming({ prompt, settings: s, vaultDir: getWorkspaceDir(), signal, agent });
   }
   return callAISession({
     prompt,
     settings: s,
-    vaultDir: getVaultBasePath(),
+    vaultDir: getWorkspaceDir(),
     signal,
     agent,
     skipCli: true,

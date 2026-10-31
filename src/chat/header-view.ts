@@ -1,9 +1,9 @@
-import { Menu, Notice, setIcon, setTooltip } from "obsidian";
+﻿import { Menu, Notice, setIcon, setTooltip } from "obsidian";
 import type { ChatCtx } from "./context";
 import type { ChatSession } from "../types";
 import { API_STATUS_CACHE_MS, getActiveProvider } from "../constants";
-import { ensureOpenCodeServer, getVaultBasePath } from "../ai";
-import { buildToolbarContent as renderToolbar, buildContextControls } from "../toolbar";
+import { ensureOpenCodeServer, getWorkspaceDir } from "../ai";
+import { buildToolbarContent as renderToolbar, buildContextControls, buildWorkspaceChip } from "../toolbar";
 import { showPopup, addPopupItem, closePopup } from "../popup";
 import { createActionBtn } from "../action-buttons";
 import { openInEditor } from "../open-in-editor";
@@ -27,17 +27,15 @@ export function buildHeader(ctx: ChatCtx, root: HTMLDivElement): void {
   setTooltip(sessionBtn, t("chat.tooltip.session"));
   sessionBtn.addEventListener("click", () => showSessionMenu(ctx, sessionBtn));
 
-  const newChatBtn = left.createSpan({ cls: "xyag-icon-btn" });
-  setIcon(newChatBtn, "message-square-plus");
-  setTooltip(newChatBtn, t("chat.tooltip.newChat"));
-  newChatBtn.addEventListener("click", () => showNewChatMenu(ctx, newChatBtn));
-
   ctx.agentSelector = left.createSpan({ cls: "xyag-agent-selector" });
   setTooltip(ctx.agentSelector, t("chat.agent.tooltip"));
   ctx.agentSelector.addEventListener("click", (e) => {
     e.stopPropagation();
     showAgentSwitcher(ctx, ctx.agentSelector);
   });
+
+  // 工作区 chip 放在 Agent 切换的右侧
+  buildWorkspaceChip(ctx, left);
 
   buildHeaderRight(ctx, right);
   updateAgentSelector(ctx);
@@ -87,52 +85,7 @@ export function updateAgentBorderClass(ctx: ChatCtx): void {
   if (channel === "cli") ctx.viewContainer.addClass("xyag-agent-build");
 }
 
-// ─── 新建 / Agent 切换 / 连接弹层 ──────────────────────────────────
-
-/**
- * 工具栏「新建」下拉菜单：群聊 + 各个已启用的 Agent（新建独立对话）。
- * 历史菜单里不再保留「新建」项，统一收拢到这里。
- */
-export function showNewChatMenu(ctx: ChatCtx, anchor: HTMLElement): void {
-  if (ctx.abortController) {
-    new Notice(t("chat.waitForResponse"));
-    return;
-  }
-  const s = ctx.plugin.settings;
-  showPopup(
-    anchor,
-    (popup) => {
-      addPopupItem(
-        popup,
-        t("chat.session.newChat"),
-        false,
-        () => {
-          void ctx.newChat();
-        },
-        "option",
-      );
-      if (listAgents(s).length > 0) {
-        popup.createDiv({ cls: "xyag-popup-separator" });
-      }
-      for (const agent of listAgents(s)) {
-        addPopupItem(
-          popup,
-          t("chat.session.newWithAgentName", agent.name),
-          false,
-          () => {
-            void ctx.newChatWith(agent.id);
-          },
-          "option",
-        );
-      }
-    },
-    {
-      onClose: () => {
-        // no-op
-      },
-    },
-  );
-}
+// ─── Agent 切换 / 连接弹层 ──────────────────────────────────
 
 /** 前台 Agent 选择器（点击切换由谁回答）。 */
 export function showAgentSwitcher(ctx: ChatCtx, anchor: HTMLElement): void {
@@ -266,7 +219,7 @@ export async function syncOpenCodeState(ctx: ChatCtx, opts?: { force?: boolean; 
         s.opencode.cliPath,
         s.opencode.hostname,
         s.opencode.port,
-        getVaultBasePath(),
+        getWorkspaceDir(),
         true,
       ).catch((e) => console.warn("opencode 自动启动失败:", e));
     }
@@ -445,8 +398,31 @@ export function drawSessionList(ctx: ChatCtx, container: HTMLElement): void {
       container.dispatchEvent(new CustomEvent("xyag-popup-relayout"));
     });
 
+    // 新建入口放在分组下第一行：群聊组建群聊，Agent 组建该 Agent 的独立对话
+    if (!group.gone) {
+      const newItem = body.createDiv({ cls: "xyag-session-item xyag-session-new-item" });
+      // 复用勾选列的占位宽度，和下面的会话行纵向对齐
+      const newIcon = newItem.createSpan({ cls: "xyag-popup-check" });
+      setIcon(newIcon, "plus");
+      newItem.createSpan({ cls: "xyag-session-item-title", text: t("chat.session.new") });
+      setTooltip(
+        newItem,
+        group.ownerId === null ? t("chat.session.newChat") : t("chat.session.newWithAgentName", group.label),
+      );
+      newItem.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (ctx.abortController) {
+          new Notice(t("chat.waitForResponse"));
+          return;
+        }
+        closeSessionMenu(ctx);
+        void (group.ownerId === null ? ctx.newChat() : ctx.newChatWith(group.ownerId));
+      });
+    }
+
     if (items.length === 0) {
-      body.createDiv({ cls: "xyag-session-empty", text: t("chat.session.empty") });
+      // 有「新建」行的分组不需要再提示空，灰色分组（Agent 已删）才提示
+      if (group.gone) body.createDiv({ cls: "xyag-session-empty", text: t("chat.session.empty") });
     }
     for (const session of items) {
       renderSessionItem(ctx, body, session);

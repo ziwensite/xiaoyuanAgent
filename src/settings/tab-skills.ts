@@ -1,8 +1,8 @@
-import type { SettingsCtx } from "./context";
+﻿import type { SettingsCtx } from "./context";
 import { getDefaultAgent } from "../agent-registry";
 import { t } from "../i18n";
 import { createSelectField } from "../select-list";
-import { getVaultBasePath } from "../server";
+import { getWorkspaceDir } from "../server";
 import { Notice, Setting, TFile } from "obsidian";
 
 // ─── Skills 设置 ──────────────────────────────────────────────────
@@ -54,7 +54,7 @@ ${text}
 
 请直接输出 AGENTS.md 的完整内容，不要多余解释。`,
               settings: s,
-              vaultDir: getVaultBasePath(),
+              vaultDir: getWorkspaceDir(),
               // prompt 是裸任务指令，系统提示词要单独注入当前前台 Agent 的
               systemPrompt: agent?.systemPrompt,
             });
@@ -113,7 +113,7 @@ ${text}
 
 只返回纯 JSON 数组 [{name, description}]，不要其他文字。\n\n${content}`,
               settings: s,
-              vaultDir: getVaultBasePath(),
+              vaultDir: getWorkspaceDir(),
               systemPrompt: agent?.systemPrompt,
             });
             const jsonStart = result.indexOf("[");

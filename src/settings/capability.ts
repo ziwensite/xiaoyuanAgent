@@ -1,6 +1,6 @@
-import type { SettingsCtx } from "./context";
+﻿import type { SettingsCtx } from "./context";
 import { t } from "../i18n";
-import { getVaultBasePath } from "../server";
+import { getWorkspaceDir } from "../server";
 import { Notice, Setting } from "obsidian";
 
 export function buildCapabilityCheck(ctx: SettingsCtx, container: HTMLElement) {
@@ -33,7 +33,7 @@ export function buildCapabilityCheck(ctx: SettingsCtx, container: HTMLElement) {
               });
               return;
             }
-            const results = await probeOpenCodeCapabilities(conn, getVaultBasePath());
+            const results = await probeOpenCodeCapabilities(conn, getWorkspaceDir());
             resultBox.empty();
             for (const item of results) {
               const label = t(`setting.cli.capability.item.${item.key}`);

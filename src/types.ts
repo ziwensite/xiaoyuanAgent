@@ -202,6 +202,14 @@ export interface XiaoyuanAgentSettings {
 
   opencode: OpenCodeSettings;
 
+  /**
+   * 工作区目录：AI（CLI 通道）实际操作的目录。空串 = 库根目录。
+   * 聊天顶栏可切换；切换会重启 OpenCode 服务并清空会话绑定。
+   */
+  workspacePath?: string;
+  /** 最近用过的工作区目录（最新的在前，最多 5 个），供顶栏快捷切换。 */
+  recentWorkspaces?: string[];
+
   activeApiProviderId: string;
   apiProviders: ApiProviderConfig[];
 

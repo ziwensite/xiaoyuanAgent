@@ -1,7 +1,7 @@
-import { Notice } from "obsidian";
+﻿import { Notice } from "obsidian";
 import type XiaoyuanAgentPlugin from "../main";
 import { checkConnection } from "../connection-checker";
-import { getVaultBasePath } from "../server";
+import { getWorkspaceDir } from "../server";
 import { checkOpenCodeStatus } from "../opencode-config";
 import { onOpenCodeServerStateChange } from "../opencode-server";
 import { t } from "../i18n";
@@ -100,14 +100,14 @@ class StatusStore {
   async detectCli(): Promise<void> {
     const s = this.plugin?.settings;
     if (!s) return;
-    const ok = await checkConnection(s, getVaultBasePath(), "cli", false).catch(() => false);
+    const ok = await checkConnection(s, getWorkspaceDir(), "cli", false).catch(() => false);
     this.applyConnection("cli", ok);
   }
 
   async detectApi(): Promise<void> {
     const s = this.plugin?.settings;
     if (!s) return;
-    const ok = await checkConnection(s, getVaultBasePath(), "api").catch(() => false);
+    const ok = await checkConnection(s, getWorkspaceDir(), "api").catch(() => false);
     this.applyConnection("api", ok);
   }
 
@@ -162,7 +162,7 @@ class StatusStore {
       if (cached.version !== this.snapshot.version) this.patch({ version: cached.version });
       return;
     }
-    const version = await checkOpenCodeStatus(s.opencode.cliPath, getVaultBasePath(), s.opencode.port, s.opencode.hostname)
+    const version = await checkOpenCodeStatus(s.opencode.cliPath, getWorkspaceDir(), s.opencode.port, s.opencode.hostname)
       .then((st) => (st?.version || "").trim())
       .catch(() => "");
     versionCache.set(cacheKey, { version, ts: Date.now() });

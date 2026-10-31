@@ -26,7 +26,7 @@ import { t } from "./i18n";
 
 export { stopOpenCodeServer } from "./opencode-server";
 export { fetchOpenCodeModelsFromCLI, fetchOpenCodeAgents, checkOpenCodeStatus } from "./opencode-config";
-export { getVaultBasePath } from "./server";
+export { getVaultBasePath, getWorkspaceDir } from "./server";
 
 let syncFromConnect = false;
 

@@ -1,9 +1,9 @@
-import type { SettingsCtx } from "./context";
+﻿import type { SettingsCtx } from "./context";
 import manifest from "../../manifest.json";
 import { getAgentForChannel } from "../agent-registry";
 import { getActiveProvider, VERIFIED_OPENCODE_VERSION, VIEW_TYPE_XIAOYUAN_AGENT_CHAT } from "../constants";
 import { t } from "../i18n";
-import { getVaultBasePath } from "../server";
+import { getWorkspaceDir } from "../server";
 import type { XiaoyuanAgentSettings, ChatSession } from "../types";
 import { scopeOf, readContextStatus } from "../context-control";
 import { compareVersions, majorVersion } from "../utils";
@@ -170,7 +170,7 @@ export function buildStatusCard(ctx: SettingsCtx, container: HTMLElement) {
       // 版本真正变化（且尚未做过能力自检）才触发接口自检
       if (snap.version && snap.version !== lastSeenVersion && snap.version !== ctx.s().lastAutoProbeOpenCodeVersion) {
         lastSeenVersion = snap.version;
-        void runAutoCapabilityCheck(ctx, ctx.statusGeneration, ctx.s(), snap.version, getVaultBasePath());
+        void runAutoCapabilityCheck(ctx, ctx.statusGeneration, ctx.s(), snap.version, getWorkspaceDir());
       }
     });
   }
