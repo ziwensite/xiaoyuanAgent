@@ -2,9 +2,9 @@ import "obsidian";
 
 declare module "obsidian" {
   interface App {
-    setting: {
-      open(): void;
-      openTabById(id: string): void;
+    setting?: {
+      open?(): void;
+      openTabById?(id: string): void;
     };
     commands: {
       executeCommandById(id: string): void;

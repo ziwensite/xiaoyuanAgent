@@ -63,8 +63,10 @@ export function buildHeaderRight(ctx: ChatCtx, right: HTMLSpanElement): void {
   setIcon(settingsIcon, "settings");
   setTooltip(settingsIcon, t("chat.tooltip.settings"));
   settingsIcon.addEventListener("click", () => {
-    ctx.app.setting.open();
-    ctx.app.setting.openTabById("xiaoyuanAgent");
+    // 公开的命令入口负责打开设置面板
+    ctx.app.commands.executeCommandById("app:open-settings");
+    // 再尝试定位到本插件 Tab；该接口未公开，取不到就停在设置首页
+    ctx.app.setting?.openTabById?.("xiaoyuanAgent");
   });
 }
 

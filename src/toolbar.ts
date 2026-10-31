@@ -32,12 +32,26 @@ interface ElectronRemoteLike {
 }
 
 /**
- * 弹系统目录选择框（Electron 原生目录对话框，Obsidian 主进程开了 @electron/remote）。
+ * 取 Electron remote：优先 `@electron/remote`（Obsidian 当前的挂载方式），
+ * 退回旧的 `electron.remote`，两者都没有就返回 undefined。
+ */
+function loadElectronRemote(): ElectronRemoteLike | undefined {
+  try {
+    return require("@electron/remote") as ElectronRemoteLike;
+  } catch {}
+  try {
+    return (require("electron") as { remote?: ElectronRemoteLike } | undefined)?.remote;
+  } catch {}
+  return undefined;
+}
+
+/**
+ * 弹系统目录选择框（Electron 原生目录对话框）。
  */
 function pickDirectory(onPick: (dir: string) => void): void {
   void (async () => {
     try {
-      const dialog = (require("electron") as { remote?: ElectronRemoteLike } | undefined)?.remote?.dialog;
+      const dialog = loadElectronRemote()?.dialog;
       if (!dialog) throw new Error("remote dialog unavailable");
       const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
       const dir = result.filePaths[0];

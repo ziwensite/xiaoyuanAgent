@@ -1,6 +1,6 @@
 {
   "name": "xiaoyuanAgent",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "小元 Agent - Obsidian 多 Agent AI 助手（聊天、文本润色、维基管理）",
   "main": "main.js",
   "scripts": {

@@ -44,7 +44,7 @@
 | 实现方向 | 方案 A：复刻 + 多 Agent 增强 |
 | CSS 前缀 | `xyag-`（全部类名 / 视图类型重命名） |
 | 插件 id / 名 | `xiaoyuanAgent` / `XiaoyuanAgent`（中文：小元 Agent） |
-| 版本 | `1.0.0`，`minAppVersion 1.5.0`，`isDesktopOnly true` |
+| 版本 | `0.1.0`，`minAppVersion 1.5.0`，`isDesktopOnly true` |
 | Agent 预置 | 内置 2 个（小A=API、小C=CLI），可自由新增 N 个 |
 | 设置面板风格 | 沿用原风格 + 小幅优化 |
 | 聊天面板 | 增加 Agent 切换器 + `@` 弹出完整 Agent 列表 |
@@ -788,7 +788,7 @@ Agents Tab 的「模型」输入框为**文本框**，按通道给不同 placeho
 维持源项目 7 项探测，不改接口契约。
 
 ### Q10. 版本号与许可证 — ✅ 已确认
-`1.0.0`，MIT，作者 **XiaoYuan**。
+`0.1.0`，MIT，作者 **XiaoYuan**。
 
 ---
 

@@ -143,6 +143,8 @@ export default class XiaoyuanAgentPlugin extends Plugin {
   /** 后台委托并发队列（见 DESIGN.md Q5） */
   delegationQueue = new DelegationQueue();
   private lastSkillRun = new Map<string, number>();
+  /** 已注册的 skill 命令 id，避免同步时重复注册 */
+  private skillCommandIds = new Set<string>();
   /** 旧版本设置需要一次性迁移，落盘时机由 onload 决定 */
   private needsSettingsMigration = false;
   private unloaded = false;
@@ -222,24 +224,22 @@ export default class XiaoyuanAgentPlugin extends Plugin {
     );
 
     this.addCommand({
-      id: "xiaoyuanAgent-toggle-chat",
+      id: "toggle-chat",
       name: t("cmd.toggle"),
       callback: () => this.activateChatView(),
-      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "C" }],
     });
 
     this.addCommand({
-      id: "xiaoyuanAgent-new-chat",
+      id: "new-chat",
       name: t("cmd.newChat"),
       callback: () => {
         const leaf = this.activateChatView();
         if (leaf?.view instanceof XiaoyuanAgentChatView) void leaf.view.newChat();
       },
-      hotkeys: [{ modifiers: ["Ctrl", "Shift"], key: "N" }],
     });
 
     this.addCommand({
-      id: "xiaoyuanAgent-chat-with-note",
+      id: "chat-with-note",
       name: t("cmd.chatWithNote"),
       callback: async () => {
         const file = this.app.workspace.getActiveFile();
@@ -395,9 +395,13 @@ export default class XiaoyuanAgentPlugin extends Plugin {
 
   /** 注册单个 skill 命令（skills 列表变更时由设置面板调用）。 */
   registerSkillCommand(skill: SkillEntry): void {
+    // Obsidian 会给命令 id 自动加上插件 id 前缀，这里只写自身部分
+    const id = `skill-${skill.name}`;
+    if (this.skillCommandIds.has(id)) return;
+    this.skillCommandIds.add(id);
     this.addCommand({
-      id: `xiaoyuanAgent-skill-${skill.name}`,
-      name: `📖 ${skill.name} — ${skill.description}`,
+      id,
+      name: `${skill.name} — ${skill.description}`,
       callback: () => {
         const leaf = this.activateChatView();
         if (leaf?.view instanceof XiaoyuanAgentChatView) {

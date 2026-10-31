@@ -71,8 +71,11 @@ class StatusStore {
     const recheck = () => {
       void this.detect();
     };
-    window.addEventListener("offline", recheck);
-    window.addEventListener("online", recheck);
+    // registerDomEvent 会在插件卸载时自动清理监听
+    if (this.plugin) {
+      this.plugin.registerDomEvent(window, "offline", recheck);
+      this.plugin.registerDomEvent(window, "online", recheck);
+    }
   }
 
   get(): StatusSnapshot {
