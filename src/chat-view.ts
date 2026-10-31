@@ -109,6 +109,15 @@ export class XiaoyuanAgentChatView extends ItemView implements ChatCtx {
     this.messagesEl = mainEl.createDiv({ cls: "xyag-chat-messages" });
     inputView.buildInputArea(this, mainEl);
 
+    // 活动笔记变化时刷新工具栏的「当前笔记」chip
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => inputView.refreshNoteChip(this)),
+    );
+    // 文件改名后 chip 上的名字也要跟着换
+    this.registerEvent(
+      this.app.vault.on("rename", () => inputView.refreshNoteChip(this)),
+    );
+
     try {
       const s = this.plugin.settings;
       if (s.execMode === "cli" && !this.agentsSyncedOnOpen) {

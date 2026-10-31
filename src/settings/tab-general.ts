@@ -205,20 +205,6 @@ createSelectField({
       ),
     "hard-drive",
   );
-
-  ctx.decorateSetting(
-    new Setting(container)
-      .setName(t("setting.context"))
-      .setDesc(t("setting.context.desc"))
-      .addToggle((toggle) => {
-        toggle.setValue(s.showContext);
-        toggle.onChange(async (val) => {
-          s.showContext = val;
-          await ctx.plugin.saveSettings();
-          ctx.refreshChatView();
-        });
-      }),
-    "file-text",
-  );
+  // 「发送时附上当前笔记」已从设置页移到聊天输入框工具栏的笔记 chip（即时开关）
 }
 

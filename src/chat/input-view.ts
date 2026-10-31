@@ -81,9 +81,52 @@ export function buildInputArea(ctx: ChatCtx, root: HTMLDivElement): void {
   });
 }
 
+// ─── 当前笔记 chip ──────────────────────────────────────────────
+
+/**
+ * 工具栏上的「当前笔记」chip。
+ * 点亮（is-on）时发送消息会附上活动笔记内容；没有活动笔记时整个 chip 隐藏。
+ * 活动笔记变化由视图监听 active-leaf-change 后调 refreshNoteChip 更新。
+ */
+export function buildNoteChip(ctx: ChatCtx, container: HTMLElement): void {
+  const chip = container.createSpan({ cls: "xyag-note-chip" });
+  ctx.noteChipEl = chip;
+  chip.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const s = ctx.plugin.settings;
+    s.showContext = !s.showContext;
+    await ctx.plugin.saveSettings();
+    refreshNoteChip(ctx);
+  });
+  refreshNoteChip(ctx);
+}
+
+export function refreshNoteChip(ctx: ChatCtx): void {
+  const chip = ctx.noteChipEl;
+  if (!chip) return;
+  const file = ctx.app.workspace.getActiveFile();
+  if (!file) {
+    chip.style.display = "none";
+    return;
+  }
+  chip.style.display = "";
+  chip.empty();
+  setIcon(chip.createSpan({ cls: "xyag-note-chip-icon" }), "file-text");
+  chip.createSpan({ cls: "xyag-note-chip-name", text: file.basename });
+  const on = ctx.plugin.settings.showContext;
+  chip.classList.toggle("is-on", on);
+  setTooltip(chip, on ? t("chat.noteChip.on", file.path) : t("chat.noteChip.off", file.path));
+}
+
 export function buildWikiToolbar(ctx: ChatCtx, container: HTMLElement): void {
   const s = ctx.plugin.settings;
-  const wikiBtn = container.createSpan({ cls: "xyag-wiki-btn" });
+
+  // 当前笔记 chip：点亮=发送时附上笔记内容，置灰=不带
+  buildNoteChip(ctx, container);
+
+  // Wiki / AI 工具 / 话题三个按钮放右侧（靠 margin-left:auto 推过去）
+  const btnGroup = container.createSpan({ cls: "xyag-wiki-bar-btns" });
+  const wikiBtn = btnGroup.createSpan({ cls: "xyag-wiki-btn" });
   setIcon(wikiBtn, "book-open");
   setTooltip(wikiBtn, t("chat.tooltip.wiki"));
   wikiBtn.addEventListener("click", (e) => {
@@ -106,7 +149,7 @@ export function buildWikiToolbar(ctx: ChatCtx, container: HTMLElement): void {
     );
   });
 
-  const tplBtn = container.createSpan({ cls: "xyag-wiki-btn" });
+  const tplBtn = btnGroup.createSpan({ cls: "xyag-wiki-btn" });
   setIcon(tplBtn, "sparkles");
   setTooltip(tplBtn, t("btn.aiTools"));
   tplBtn.addEventListener("click", (e) => {
@@ -116,6 +159,7 @@ export function buildWikiToolbar(ctx: ChatCtx, container: HTMLElement): void {
       new Notice(t("inputAt.noTemplates"));
       return;
     }
+    // 原生 Menu 自带图标，风格与 Obsidian 一致
     const menu = new Menu();
     for (const tpl of templates) {
       menu.addItem((item) => {
@@ -127,11 +171,12 @@ export function buildWikiToolbar(ctx: ChatCtx, container: HTMLElement): void {
         });
       });
     }
+    // 原生 Menu 自带图标与防溢出定位，直接弹在鼠标处
     menu.showAtMouseEvent(e);
   });
 
   // 话题分段：仅作视觉分段，不影响上下文（见 DESIGN.md 5.10.3）
-  const topicBtn = container.createSpan({ cls: "xyag-wiki-btn" });
+  const topicBtn = btnGroup.createSpan({ cls: "xyag-wiki-btn" });
   setIcon(topicBtn, "heading");
   setTooltip(topicBtn, t("chat.topic.new"));
   topicBtn.addEventListener("click", (e) => {
@@ -195,9 +240,9 @@ export function handleSlashOrAtInput(ctx: ChatCtx): void {
   if (matchedSkills.length === 0 && matchedTemplates.length === 0) return;
 
   const popup = parentEl.createDiv({ cls: "xyag-skill-popup" });
-  const addItem = (icon: string, name: string, desc: string, fill: string) => {
+  const addItem = (name: string, desc: string, fill: string) => {
     const item = popup.createDiv({ cls: "xyag-skill-popup-item" });
-    item.createSpan({ cls: "xyag-skill-popup-name", text: `${icon} ${name}` });
+    item.createSpan({ cls: "xyag-skill-popup-name", text: name });
     item.createSpan({ cls: "xyag-skill-popup-desc", text: desc });
     item.addEventListener("click", () => {
       ctx.inputEl.value = fill;
@@ -206,8 +251,8 @@ export function handleSlashOrAtInput(ctx: ChatCtx): void {
       ctx.skillIndex = -1;
     });
   };
-  for (const skill of matchedSkills) addItem("📋", skill.name, skill.description, `/${skill.name} `);
-  for (const tpl of matchedTemplates) addItem("📖", tpl.name, tpl.description, `/template:${tpl.name} `);
+  for (const skill of matchedSkills) addItem(skill.name, skill.description, `/${skill.name} `);
+  for (const tpl of matchedTemplates) addItem(tpl.name, tpl.description, `/template:${tpl.name} `);
 
   ctx.skillIndex = 0;
   const firstItem = popup.querySelector(".xyag-skill-popup-item");

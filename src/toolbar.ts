@@ -139,7 +139,7 @@ export function buildToolbarContent(container: HTMLElement, view: ToolbarHost): 
   const s = view.plugin.settings;
 
   const attachBtn = container.createSpan({ cls: "xyag-attach-btn" });
-  attachBtn.textContent = "+";
+  setIcon(attachBtn, "paperclip");
   setTooltip(attachBtn, t("chat.tooltip.attach"));
   attachBtn.addEventListener("click", () => view.pickFiles());
 
@@ -219,7 +219,7 @@ export function buildToolbarContent(container: HTMLElement, view: ToolbarHost): 
     attachModelPicker(trigger, s, {
       direction: "auto",
       withApiSection: true,
-      minWidth: 200,
+      fullWidth: true,
       persist: () => view.plugin.saveSettings(),
       autoSync: () => view.syncOpenCodeState({ force: false, silent: true }),
       onToggle: (open) => trigger.classList.toggle("is-open", open),

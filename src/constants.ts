@@ -41,7 +41,7 @@ export const API_REQUEST_TIMEOUT_MS = 60 * 1000;
 /** 历史裁剪后允许占用的上下文比例 */
 export const CONTEXT_TRIM_RATIO = 0.75;
 /** 引用进上下文的笔记内容最大长度（字符） */
-export const CONTEXT_SNIPPET_MAX = 500;
+export const CONTEXT_SNIPPET_MAX = 2000;
 /** API 状态探测结果的缓存时长（毫秒） */
 export const API_STATUS_CACHE_MS = 60 * 1000;
 /** 单次 OpenCode 服务启动的超时（毫秒） */

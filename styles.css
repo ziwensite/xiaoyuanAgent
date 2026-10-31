@@ -803,12 +803,18 @@ pre:hover .xyag-copy-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
   color: var(--text-muted);
   cursor: pointer;
   flex: 0 0 auto;
+}
+
+/* 与输入框上方工具条图标一致 */
+.xyag-attach-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .xyag-attach-btn:hover {
@@ -838,13 +844,17 @@ pre:hover .xyag-copy-btn {
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: 4px;
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
   flex: 0 0 auto;
+}
+
+/* 与工具栏其它图标一致 */
+.xyag-send-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .xyag-send-btn:hover {
@@ -868,6 +878,14 @@ pre:hover .xyag-copy-btn {
   min-height: 28px;
 }
 
+/* Wiki / AI 工具 / 话题按钮组：推到工具条右侧 */
+.xyag-wiki-bar-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
 .xyag-wiki-btn {
   display: inline-flex;
   align-items: center;
@@ -883,6 +901,48 @@ pre:hover .xyag-copy-btn {
 .xyag-wiki-btn:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+/* 当前笔记 chip：置灰=不附，点亮=发送时附上 */
+.xyag-note-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: var(--text-faint);
+  cursor: pointer;
+  max-width: 120px;
+  min-width: 0;
+  flex-shrink: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.xyag-note-chip:hover {
+  background: var(--background-modifier-hover);
+}
+
+.xyag-note-chip.is-on {
+  color: var(--text-accent);
+  background: var(--background-modifier-hover);
+}
+
+.xyag-note-chip-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.xyag-note-chip-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.xyag-note-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 拖拽附件悬停态 */
@@ -973,7 +1033,7 @@ pre:hover .xyag-copy-btn {
 
 .xyag-popup {
   position: fixed;
-  background: var(--background-primary);
+  background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m, 6px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
@@ -1034,6 +1094,12 @@ pre:hover .xyag-copy-btn {
   flex-shrink: 0;
 }
 
+/* 整个弹层都没有勾选项时（纯菜单列表），占位列整体隐藏；
+   一旦某一项有勾，其余项保留占位以纵向对齐 */
+.xyag-popup:not(:has(.xyag-popup-check:not(:empty))) .xyag-popup-check {
+  display: none;
+}
+
 .xyag-popup-label {
   flex: 1;
   overflow: hidden;
@@ -1066,6 +1132,12 @@ pre:hover .xyag-copy-btn {
 
 .xyag-popup-suffix-btn.danger:hover {
   color: var(--color-red);
+}
+
+/* 服务器列表弹层：地址与操作按钮拉开距离 */
+.xyag-server-host {
+  min-width: 140px;
+  padding-right: 16px;
 }
 
 /* 确保提示显示在下拉菜单上层 */
@@ -1784,41 +1856,42 @@ pre:hover .xyag-copy-btn {
   position: absolute;
   bottom: 100%;
   left: 0;
-  right: 0;
+  /* 自适应内容宽度，不要铺满整个输入框 */
+  min-width: 180px;
+  max-width: 100%;
+  width: max-content;
   max-height: 200px;
   overflow-y: auto;
-  background: var(--background-primary);
+  overscroll-behavior: contain;
+  background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-m, 6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
   z-index: 100;
 }
 
 .xyag-skill-popup-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 6px 10px;
   cursor: pointer;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.xyag-skill-popup-item:last-child {
-  border-bottom: none;
+  font-size: var(--font-ui-small, 13px);
+  color: var(--text-normal);
 }
 
 .xyag-skill-popup-item:hover {
   background: var(--background-modifier-hover);
 }
 
+/* 键盘选中态与 hover 统一（跟随通用弹层的视觉规范） */
 .xyag-skill-popup-item.is-selected {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
+  background: var(--background-modifier-hover);
 }
 
 .xyag-skill-popup-name {
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: 500;
   color: var(--text-normal);
   flex-shrink: 0;
 }
@@ -1885,7 +1958,8 @@ pre:hover .xyag-copy-btn {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
+  /* 右侧定位交给按钮组的 margin-left:auto（它排在本容器前面），
+     这里不再设 auto，否则两处 auto 会均分空白把按钮组挤到中间 */
   flex: 0 0 auto;
   min-width: 0;
 }
@@ -1914,6 +1988,9 @@ pre:hover .xyag-copy-btn {
   user-select: none;
   white-space: nowrap;
   flex: 0 0 auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: background 0.15s, color 0.15s;
 }
 

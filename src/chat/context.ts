@@ -67,6 +67,8 @@ export interface ChatCtx extends ToolbarHost {
   toolbarEl: HTMLDivElement;
   /** 输入框上方工具条右侧的上下文状态容器（CLI 通道才有内容） */
   contextBarEl?: HTMLDivElement;
+  /** 工具栏「当前笔记」chip；无活动笔记时为 null */
+  noteChipEl?: HTMLElement | null;
   agentSelector: HTMLSpanElement;
   connectionStatusEl: HTMLSpanElement | null;
   openCodeEl: HTMLSpanElement;

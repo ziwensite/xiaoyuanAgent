@@ -20,6 +20,8 @@ export interface ModelPickerOptions {
   onSelectApi?: (label: string) => void;
   /** 弹层宽度跟随触发器。 */
   matchWidth?: boolean;
+  /** 弹层贴住聊天容器全宽（聊天界面用）。 */
+  fullWidth?: boolean;
   /** 弹层最小宽度（px）。 */
   minWidth?: number;
   /** 展开 / 关闭回调（供下拉框同步箭头与 aria 状态）。 */
@@ -166,6 +168,7 @@ export function attachModelPicker(
       maxHeight: "50vh",
       matchWidth: options.matchWidth,
       minWidth: options.minWidth,
+      fullWidth: options.fullWidth,
       onClose: () => options.onToggle?.(false),
     },
   );

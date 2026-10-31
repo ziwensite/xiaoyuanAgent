@@ -186,7 +186,8 @@ export async function showConnectionPopup(ctx: ChatCtx, anchor: HTMLElement): Pr
       for (const url of urls) {
         const row = popup.createDiv({ cls: "xyag-popup-item" });
         row.createSpan({ cls: "xyag-status-dot is-on" });
-        row.createSpan({ text: new URL(url).host });
+        // 地址与操作按钮之间留足空白，不要挤在一起
+        row.createSpan({ cls: "xyag-popup-label xyag-server-host", text: new URL(url).host });
         const actions = row.createDiv({ cls: "xyag-popup-suffix" });
         const openIcon = actions.createSpan({ cls: "xyag-popup-suffix-btn xyag-msg-action" });
         setIcon(openIcon, "external-link");
@@ -205,7 +206,8 @@ export async function showConnectionPopup(ctx: ChatCtx, anchor: HTMLElement): Pr
         });
       }
     },
-    { fullWidth: true },
+    // 自适应宽度：内容就一两条服务器地址，全宽太夸张
+    { direction: "down" },
   );
 }
 
